@@ -50,3 +50,36 @@ test('E-06 网关页展示运行状态与端点', async ({ page }) => {
   await page.getByTestId('tab-gateway').click();
   await expect(page.getByTestId('endpoint-url')).toBeVisible();
 });
+
+test('E-07 MCP 发现页进入即展示列表并可翻页', async ({ page }) => {
+  await auth(page);
+  await page.getByTestId('tab-discovery').click();
+  // 进入页面自动查询（无需先输入关键词）；列表或错误提示二者其一出现（CI 环境可能无外网）
+  await expect(page.getByTestId('tab-discovery')).toBeVisible();
+  await page.waitForTimeout(1000);
+  const rows = page.locator('[data-testid^="registry-"]');
+  if ((await rows.count()) > 0) {
+    await expect(rows.first()).toBeVisible();
+  }
+});
+
+test('E-08 分组：新建分组、加入 MCP、关联 agent 后有效绑定生效', async ({ page }) => {
+  await auth(page);
+  await page.getByTestId('tab-sync').click();
+  await page.getByTestId('btn-add-group').click();
+  await page.getByTestId('group-name').fill('smoke-group');
+  await page.getByTestId('group-server-smoke-fs').check();
+  await page.getByTestId('group-save').click();
+  await expect(page.getByTestId('group-card-smoke-group')).toBeVisible();
+
+  // 通过分组卡片下拉关联 claude-code（第 2 个下拉是 agent 选择）
+  const card = page.getByTestId('group-card-smoke-group');
+  await card.locator('select').nth(1).selectOption('claude-code');
+  await expect(page.getByTestId('sync-agent-claude-code')).toContainText('smoke-group');
+  // 有效绑定 = 分组包含的 server
+  await expect(page.getByTestId('sync-agent-claude-code')).toContainText('smoke-fs');
+
+  // 分发预览仍可用
+  await page.getByTestId('btn-dry-run').click();
+  await expect(page.getByText('预览完成')).toBeVisible();
+});

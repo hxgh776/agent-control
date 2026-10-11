@@ -2,14 +2,25 @@ import { randomBytes } from 'node:crypto';
 import {
   applyImport,
   decryptRecord,
+  dedupeSuggestions,
+  deleteGroup,
   deleteServer,
   detectEnvironment,
+  effectiveBoundIds,
   encryptRecord,
+  filterByRelevance,
+  groupAddServer,
+  groupBindAgent,
+  groupRemoveServer,
+  groupUnbindAgent,
   importPreview,
   npmSearchToSuggestions,
   registryEntryToServerInput,
   removeBinding,
   setBinding,
+  smitheryToSuggestions,
+  sortByPopularity,
+  upsertGroup,
   upsertServer,
 } from '@mcp-manager/core';
 import type { AgentType, ServerDef, UpsertServerInput } from '@mcp-manager/core';
@@ -58,6 +69,8 @@ const FIELD_ZH: Record<string, string> = {
   gatewayMode: '网关模式',
   enabled: '启用',
   toolOverrides: '工具开关',
+  serverIds: '包含的 server',
+  agentTypes: '关联的 agent',
 };
 
 function formatZodIssues(error: z.ZodError): string {
@@ -88,6 +101,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
       gateway: daemon.gatewayStatus(),
       serverCount: daemon.config.servers.length,
       bindingCount: daemon.config.bindings.length,
+      groupCount: daemon.config.groups.length,
       resyncPending: daemon.config.settings.tokenRotatedAt !== undefined,
       authRequired: daemon.config.settings.authRequired === true,
     });
@@ -107,13 +121,22 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     const detections = await daemon.agentDetections(ctx.query.get('refresh') === '1');
     const byType = new Map(detections.map((d) => [d.agentType, d]));
     sendJson(ctx.res, 200, {
-      agents: detections.map((d) => ({
-        ...d,
-        syncState: daemon.config.syncState[d.agentType] ?? null,
-        boundServerIds: daemon.config.bindings
+      agents: detections.map((d) => {
+        const direct = daemon.config.bindings
           .filter((b) => b.agentType === d.agentType)
-          .map((b) => b.serverId),
-      })),
+          .map((b) => b.serverId);
+        const groupIds = daemon.config.groups
+          .filter((g) => g.agentTypes.includes(d.agentType))
+          .map((g) => g.id);
+        return {
+          ...d,
+          syncState: daemon.config.syncState[d.agentType] ?? null,
+          directServerIds: direct,
+          groupIds,
+          // 有效绑定 = 直连 ∪ 分组（供旧 UI/脚本兼容）
+          boundServerIds: [...effectiveBoundIds(daemon.config, d.agentType)],
+        };
+      }),
       types: [...byType.keys()],
     });
   });
@@ -192,6 +215,89 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     sendJson(ctx.res, 200, { ok: true });
   });
 
+  // —— 分组（批量分发：分组包含 server，agent 关联分组；另支持直连绑定） ——
+  const groupInputSchema = z.object({
+    name: z.string().min(1, '分组名不能为空'),
+    serverIds: z.array(z.string()).optional(),
+    agentTypes: z.array(z.enum(['claude-code', 'codex', 'cursor', 'trae', 'opencode', 'claude-desktop', 'windsurf', 'gemini-cli'])).optional(),
+  });
+
+  router.get('/api/groups', async (ctx) => {
+    sendJson(ctx.res, 200, { groups: daemon.config.groups });
+  });
+
+  router.post('/api/groups', async (ctx) => {
+    const parsed = groupInputSchema.safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    const group = upsertGroup(daemon.config, parsed.data);
+    await save();
+    sendJson(ctx.res, 201, { group });
+  });
+
+  router.patch('/api/groups/:id', async (ctx) => {
+    const id = ctx.params['id']!;
+    const group = daemon.config.groups.find((g) => g.id === id);
+    if (!group) return sendError(ctx.res, 404, '分组不存在');
+    const parsed = groupInputSchema.partial().safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    const updated = upsertGroup(daemon.config, {
+      id,
+      name: parsed.data.name ?? group.name,
+      serverIds: parsed.data.serverIds ?? group.serverIds,
+      agentTypes: parsed.data.agentTypes ?? group.agentTypes,
+    });
+    await save();
+    sendJson(ctx.res, 200, { group: updated });
+  });
+
+  router.delete('/api/groups/:id', async (ctx) => {
+    const id = ctx.params['id']!;
+    if (!daemon.config.groups.some((g) => g.id === id)) return sendError(ctx.res, 404, '分组不存在');
+    deleteGroup(daemon.config, id);
+    await save();
+    sendJson(ctx.res, 200, { ok: true });
+  });
+
+  router.put('/api/groups/:id/servers/:serverId', async (ctx) => {
+    try {
+      groupAddServer(daemon.config, ctx.params['id']!, ctx.params['serverId']!);
+    } catch (err) {
+      return sendError(ctx.res, 404, String((err as Error).message));
+    }
+    await save();
+    sendJson(ctx.res, 200, { ok: true });
+  });
+
+  router.delete('/api/groups/:id/servers/:serverId', async (ctx) => {
+    try {
+      groupRemoveServer(daemon.config, ctx.params['id']!, ctx.params['serverId']!);
+    } catch (err) {
+      return sendError(ctx.res, 404, String((err as Error).message));
+    }
+    await save();
+    sendJson(ctx.res, 200, { ok: true });
+  });
+
+  router.put('/api/groups/:id/agents/:agentType', async (ctx) => {
+    try {
+      groupBindAgent(daemon.config, ctx.params['id']!, ctx.params['agentType']! as AgentType);
+    } catch (err) {
+      return sendError(ctx.res, 404, String((err as Error).message));
+    }
+    await save();
+    sendJson(ctx.res, 200, { ok: true });
+  });
+
+  router.delete('/api/groups/:id/agents/:agentType', async (ctx) => {
+    try {
+      groupUnbindAgent(daemon.config, ctx.params['id']!, ctx.params['agentType']! as AgentType);
+    } catch (err) {
+      return sendError(ctx.res, 404, String((err as Error).message));
+    }
+    await save();
+    sendJson(ctx.res, 200, { ok: true });
+  });
+
   // —— 分发 ——
   router.post('/api/sync', async (ctx) => {
     const body = (await ctx.body()) as { dryRun?: boolean; resolutions?: Record<string, 'override' | 'skip'> };
@@ -233,7 +339,8 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
   router.get('/api/servers/:id/tools', async (ctx) => {
     const id = ctx.params['id']!;
     if (!daemon.gatewayControl) return sendError(ctx.res, 503, 'gateway 未启用', 'GATEWAY_DOWN');
-    const tools = await daemon.probeTools?.(id);
+    // 默认读缓存（连接建立过即秒回）；?refresh=1 强制重新抓取
+    const tools = await daemon.probeTools?.(id, ctx.query.get('refresh') === '1');
     if (!tools) return sendError(ctx.res, 502, '无法连接上游或工具列表为空');
     sendJson(ctx.res, 200, { tools });
   });
@@ -317,55 +424,179 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     });
   });
 
-  // M3.6 S7：registry 搜索——官方源优先，不可达时自动回退 npm 搜索
+  // registry 搜索/浏览——三源可选：官方 MCP Registry / Smithery / npm（镜像回退）。
+  // 支持分页（limit/offset）；q 为空 = 浏览模式（官方与 Smithery 支持浏览，npm 需要关键词）。
+  // 官方源偶发忽略 search 参数 → 结果统一做相关性过滤与按名去重，不信任上游。
   const OFFICIAL_REGISTRY = 'https://registry.modelcontextprotocol.io';
+  const SMITHERY_REGISTRY = 'https://registry.smithery.ai';
+  const NPM_HOSTS = ['https://registry.npmjs.org', 'https://registry.npmmirror.com'];
+  const DEFAULT_PAGE_SIZE = 20;
+
   router.get('/api/registry/search', async (ctx) => {
     const q = ctx.query.get('q')?.trim() ?? '';
-    if (q === '') return sendError(ctx.res, 400, '缺少搜索词 q');
-    const base = daemon.config.settings.registryBaseUrl?.trim() || OFFICIAL_REGISTRY;
+    const limit = Math.min(Math.max(Number.parseInt(ctx.query.get('limit') ?? '', 10) || DEFAULT_PAGE_SIZE, 1), 50);
+    const offset = Math.max(Number.parseInt(ctx.query.get('offset') ?? '', 10) || 0, 0);
+    const source = ctx.query.get('source') ?? 'official';
     const failures: string[] = [];
 
-    try {
-      const res = await fetch(
-        `${base}/v0/servers?search=${encodeURIComponent(q)}&limit=20`,
-        { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } },
-      );
-      if (!res.ok) {
-        failures.push(`官方 registry(${base}) 返回 ${res.status}`);
-      } else {
-        const data = (await res.json()) as { servers?: Array<Record<string, unknown>> };
-        const entries = (data.servers ?? []).map((e) => (e['server'] ?? e) as Record<string, unknown>);
-        const servers = entries.map((e) => {
-          const s = registryEntryToServerInput(e);
-          return { ...s, source: 'official' as const };
+    // —— npm 搜索（优先官方源、失败回退国内镜像；按周下载热度排序） ——
+    const POPULARITY_WINDOW = 250; // npm 单次搜索上限 250：拉满后本地按热度排序再切片
+    const npmSearch = async (): Promise<void> => {
+      if (q === '') return; // npm 无浏览目录：空词直接返回，让上层兜底报错
+      for (const host of NPM_HOSTS) {
+        try {
+          // 热度排序需要完整窗口：浅页拉大窗口排序后切片；深页（>250）退回上游相关序
+          const deep = offset + limit > POPULARITY_WINDOW;
+          const size = deep ? limit : Math.min(Math.max(offset + limit, 50), POPULARITY_WINDOW);
+          const from = deep ? offset : 0;
+          const res = await fetch(
+            `${host}/-/v1/search?text=${encodeURIComponent(q)}&size=${size}&from=${from}`,
+            { signal: AbortSignal.timeout(10_000) },
+          );
+          if (!res.ok) {
+            failures.push(`npm(${host}) 返回 ${res.status}`);
+            continue;
+          }
+          const data = (await res.json()) as Parameters<typeof npmSearchToSuggestions>[0] & { total?: number };
+          const servers = sortByPopularity(npmSearchToSuggestions(data)).slice(offset - from, offset - from + limit);
+          const total = data.total;
+          sendJson(ctx.res, 200, {
+            servers,
+            source: 'npm',
+            notes: failures,
+            ...(total !== undefined ? { total, totalPages: Math.ceil(total / limit) } : {}),
+            hasMore: total !== undefined ? offset + servers.length < total : servers.length >= limit,
+          });
+          return;
+        } catch (err) {
+          failures.push(`npm(${host}) 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+        }
+      }
+    };
+
+    // —— Smithery（totalCount/totalPages 齐全；上游单页上限 100，拉多页后按使用热度排序） ——
+    const SMITHERY_PAGE = 100;
+    const SMITHERY_WINDOW = 300; // 热度排序窗口：前 300 条内全局排序，更深页退回上游相关序
+    const smitherySearch = async (): Promise<void> => {
+      try {
+        let merged: Parameters<typeof smitheryToSuggestions>[0]['servers'] = [];
+        let total: number | undefined;
+        let totalPages: number | undefined;
+        if (offset + limit <= SMITHERY_WINDOW) {
+          // 浅页：从第 1 页拉到覆盖 offset+limit，合并后按热度全局排序再切片
+          const pagesToFetch = Math.min(Math.ceil((offset + limit) / SMITHERY_PAGE), SMITHERY_WINDOW / SMITHERY_PAGE);
+          for (let p = 1; p <= pagesToFetch; p++) {
+            const res = await fetch(
+              `${SMITHERY_REGISTRY}/servers?${q !== '' ? `q=${encodeURIComponent(q)}&` : ''}page=${p}&pageSize=${SMITHERY_PAGE}`,
+              { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } },
+            );
+            if (!res.ok) {
+              failures.push(`Smithery 返回 ${res.status}`);
+              break;
+            }
+            const data = (await res.json()) as Parameters<typeof smitheryToSuggestions>[0];
+            merged = merged.concat(data.servers ?? []);
+            total = data.pagination?.totalCount;
+            totalPages = data.pagination?.totalPages;
+            if (totalPages !== undefined && p >= totalPages) break;
+          }
+        } else {
+          // 深页：退回上游相关序（单页直通）
+          const page = Math.floor(offset / limit) + 1;
+          const res = await fetch(
+            `${SMITHERY_REGISTRY}/servers?${q !== '' ? `q=${encodeURIComponent(q)}&` : ''}page=${page}&pageSize=${limit}`,
+            { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } },
+          );
+          if (!res.ok) {
+            failures.push(`Smithery 返回 ${res.status}`);
+          } else {
+            const data = (await res.json()) as Parameters<typeof smitheryToSuggestions>[0];
+            merged = data.servers ?? [];
+            total = data.pagination?.totalCount;
+            totalPages = data.pagination?.totalPages;
+          }
+        }
+        if (merged.length === 0 && total === undefined) {
+          await npmSearch();
+          return;
+        }
+        const sorted = sortByPopularity(smitheryToSuggestions({ servers: merged }));
+        const servers =
+          offset + limit <= SMITHERY_WINDOW ? sorted.slice(offset, offset + limit) : sorted.slice(0, limit);
+        sendJson(ctx.res, 200, {
+          servers,
+          source: 'smithery',
+          notes: failures,
+          ...(total !== undefined ? { total } : {}),
+          ...(total !== undefined ? { totalPages: Math.ceil(total / limit) } : {}),
+          hasMore: total !== undefined ? offset + servers.length < total : servers.length >= limit,
         });
-        return sendJson(ctx.res, 200, { servers, source: 'official' });
+      } catch (err) {
+        failures.push(`Smithery 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+        await npmSearch();
       }
-    } catch (err) {
-      failures.push(`官方 registry(${base}) 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
-    }
+    };
 
-    // 回退：npm 搜索（registry.npmjs.org 的 -/v1/search）
-    try {
-      const res = await fetch(
-        `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=20`,
-        { signal: AbortSignal.timeout(10_000) },
+    // —— 官方 registry（offset 翻页 + 相关性过滤 + 按名去重；失败回退 npm） ——
+    const officialBase = daemon.config.settings.registryBaseUrl?.trim() || OFFICIAL_REGISTRY;
+    const officialSearch = async (): Promise<void> => {
+      try {
+        // 官方是 cursor 翻页：一次拉到 offset+limit 再切片；搜索时多拉留出去重/过滤余量（上游单页上限约 200）
+        const headroom = q !== '' ? limit * 2 : 0;
+        const fetchLimit = Math.min(offset + limit + headroom, 200);
+        const searchPart = q !== '' ? `search=${encodeURIComponent(q)}&` : '';
+        const res = await fetch(
+          `${officialBase}/v0/servers?${searchPart}limit=${fetchLimit}`,
+          { signal: AbortSignal.timeout(15_000), headers: { accept: 'application/json' } },
+        );
+        if (!res.ok) {
+          failures.push(`官方 registry 返回 ${res.status}`);
+          await npmSearch();
+          return;
+        }
+        const data = (await res.json()) as {
+          servers?: Array<Record<string, unknown>>;
+          metadata?: { total?: number; nextCursor?: string };
+        };
+        const entries = (data.servers ?? []).map((e) => (e['server'] ?? e) as Record<string, unknown>);
+        let candidates = dedupeSuggestions(
+          entries.map((e) => registryEntryToServerInput(e)).map((s) => ({ ...s, source: 'official' as const })),
+        );
+        if (q !== '') candidates = filterByRelevance(candidates, q);
+        const total = data.metadata?.total;
+        const page = candidates.slice(offset, offset + limit);
+        const hasMore =
+          total !== undefined
+            ? offset + page.length < total
+            : candidates.length >= offset + limit || entries.length >= fetchLimit;
+        return sendJson(ctx.res, 200, {
+          servers: page,
+          source: 'official',
+          ...(total !== undefined ? { total, totalPages: Math.ceil(total / limit) } : {}),
+          hasMore,
+        });
+      } catch (err) {
+        failures.push(`官方 registry 不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
+        await npmSearch();
+      }
+    };
+
+    if (q === '' && source === 'npm') {
+      return sendError(ctx.res, 400, 'npm 源需要搜索关键词（npm 没有可浏览的 server 目录）。请输入关键词，或选择官方 / Smithery 源。');
+    }
+    if (source === 'smithery') return void smitherySearch();
+    if (source === 'npm') return void npmSearch();
+    await officialSearch();
+    // officialSearch/smitherySearch 失败时内部已尝试 npm；npm 也失败则在此兜底
+    if (!ctx.res.writableEnded) {
+      sendError(
+        ctx.res,
+        502,
+        q === ''
+          ? `无法从官方 registry 获取列表（${failures.join('；')}）。可稍后重试，或在搜索框输入关键词走 npm 回退。`
+          : `所有数据源均不可达（${failures.join('；')}）。官方 registry 可能需要网络代理。`,
       );
-      if (!res.ok) {
-        failures.push(`npm 搜索返回 ${res.status}`);
-      } else {
-        const data = (await res.json()) as Parameters<typeof npmSearchToSuggestions>[0];
-        return sendJson(ctx.res, 200, { servers: npmSearchToSuggestions(data), source: 'npm', notes: failures });
-      }
-    } catch (err) {
-      failures.push(`npm 搜索不可达: ${String((err as Error).message ?? err).slice(0, 80)}`);
     }
-
-    sendError(
-      ctx.res,
-      502,
-      `所有数据源均不可达（${failures.join('；')}）。官方 registry 可能需要网络代理，或在设置中配置镜像地址。`,
-    );
   });
 
   // —— 网关 ——

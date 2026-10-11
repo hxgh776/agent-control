@@ -33,6 +33,16 @@ const configSchema = z.object({
       addedAt: z.string(),
     }),
   ),
+  groups: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string().min(1),
+      serverIds: z.array(z.string()),
+      agentTypes: z.array(z.string()),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  ).default([]), // 旧版本配置无 groups 字段 → 迁移为空数组
   syncState: z.record(
     z.object({
       agentType: z.string(),
@@ -55,6 +65,7 @@ export function defaultConfig(): ManagerConfig {
     version: 1,
     servers: [],
     bindings: [],
+    groups: [],
     syncState: {},
     settings: {
       port: 6280,

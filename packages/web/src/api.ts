@@ -53,6 +53,7 @@ export interface StatusInfo {
   gateway: { running: boolean; port?: number };
   serverCount: number;
   bindingCount: number;
+  groupCount: number;
   resyncPending: boolean;
   authRequired: boolean;
 }
@@ -70,8 +71,20 @@ export interface AgentInfo {
   detected: boolean;
   configPaths: string[];
   transports: string[];
+  /** 有效绑定（直连 ∪ 分组包含） */
   boundServerIds: string[];
+  directServerIds: string[];
+  groupIds: string[];
   syncState: { keyStates: { key: string; hash: string }[]; updatedAt: string } | null;
+}
+
+export interface GroupInfo {
+  id: string;
+  name: string;
+  serverIds: string[];
+  agentTypes: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ServerDefDTO {
@@ -101,6 +114,15 @@ export interface RegistrySuggestion {
     url?: string;
     gatewayMode: boolean;
   } | null;
+}
+
+export interface RegistrySearchResult {
+  servers: RegistrySuggestion[];
+  source?: 'official' | 'smithery' | 'npm';
+  total?: number;
+  totalPages?: number;
+  hasMore?: boolean;
+  notes?: string[];
 }
 
 export interface SyncReport {

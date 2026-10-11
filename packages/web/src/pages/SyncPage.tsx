@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import type { AgentInfo, ServerDefDTO, SyncReport } from '../api';
-import { Badge, Btn, Card, ErrorBanner, OkBanner } from '../ui';
+import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
+import { Badge, Btn, Card, Chip, ConfirmDialog, ErrorBanner, Field, Modal, OkBanner, inputCls, selectSmCls } from '../ui';
 
 export function SyncPage() {
   const qc = useQueryClient();
@@ -12,6 +12,8 @@ export function SyncPage() {
   const [dryRun, setDryRun] = useState(false);
   // 冲突处置：resolutionKey → override | skip
   const [resolutions, setResolutions] = useState<Record<string, 'override' | 'skip'>>({});
+  const [editing, setEditing] = useState<GroupInfo | 'new' | null>(null);
+  const [removing, setRemoving] = useState<GroupInfo | null>(null);
 
   const servers = useQuery({
     queryKey: ['servers'],
@@ -21,12 +23,21 @@ export function SyncPage() {
     queryKey: ['agents'],
     queryFn: () => api.get<{ agents: AgentInfo[] }>('/api/agents'),
   });
+  const groups = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => api.get<{ groups: GroupInfo[] }>('/api/groups'),
+  });
 
-  const bind = useMutation({
-    mutationFn: ({ agentType, serverId, on }: { agentType: string; serverId: string; on: boolean }) =>
-      on ? api.put(`/api/bindings/${agentType}/${serverId}`) : api.del(`/api/bindings/${agentType}/${serverId}`),
-    onSuccess: () => void qc.invalidateQueries(),
-    onError: (e) => setError(String((e as Error).message)),
+  const invalidate = (): void => {
+    void qc.invalidateQueries();
+  };
+  const wrap = (p: { onSuccess?: () => void }) => ({
+    onSuccess: (): void => {
+      setError(null);
+      p.onSuccess?.();
+      invalidate();
+    },
+    onError: (e: Error): void => setError(String(e.message)),
   });
 
   const sync = useMutation({
@@ -47,8 +58,49 @@ export function SyncPage() {
     },
   });
 
-  const agentList = agents.data?.agents ?? [];
+  const saveGroup = useMutation({
+    mutationFn: (g: { id?: string; name: string; serverIds: string[]; agentTypes: string[] }) =>
+      g.id !== undefined ? api.patch(`/api/groups/${g.id}`, g) : api.post('/api/groups', g),
+    onSuccess: () => {
+      setEditing(null);
+      setOk('分组已保存（需要点「同步到所有 Agent」落盘）');
+      invalidate();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  const deleteGroupMut = useMutation({
+    mutationFn: (id: string) => api.del(`/api/groups/${id}`),
+    onSuccess: () => {
+      setRemoving(null);
+      setOk('分组已删除（各 agent 在下次同步时收敛）');
+      invalidate();
+    },
+    onError: (e) => setError(String((e as Error).message)),
+  });
+
+  const groupServer = useMutation({
+    mutationFn: ({ groupId, serverId, on }: { groupId: string; serverId: string; on: boolean }) =>
+      on ? api.put(`/api/groups/${groupId}/servers/${serverId}`) : api.del(`/api/groups/${groupId}/servers/${serverId}`),
+    ...wrap({}),
+  });
+  const groupAgent = useMutation({
+    mutationFn: ({ groupId, agentType, on }: { groupId: string; agentType: string; on: boolean }) =>
+      on ? api.put(`/api/groups/${groupId}/agents/${agentType}`) : api.del(`/api/groups/${groupId}/agents/${agentType}`),
+    ...wrap({}),
+  });
+  const bind = useMutation({
+    mutationFn: ({ agentType, serverId, on }: { agentType: string; serverId: string; on: boolean }) =>
+      on ? api.put(`/api/bindings/${agentType}/${serverId}`) : api.del(`/api/bindings/${agentType}/${serverId}`),
+    ...wrap({}),
+  });
+
   const serverList = servers.data?.servers ?? [];
+  const agentList = agents.data?.agents ?? [];
+  const groupList = groups.data?.groups ?? [];
+  const serverName = (id: string): string => serverList.find((s) => s.id === id)?.name ?? id;
+  const groupName = (id: string): string => groupList.find((g) => g.id === id)?.name ?? id;
+  const agentName = (type: string): string => agentList.find((a) => a.agentType === type)?.displayName ?? type;
 
   return (
     <div>
@@ -56,7 +108,8 @@ export function SyncPage() {
       <OkBanner message={ok} />
 
       <Card
-        title="分发矩阵（server × agent）"
+        title="Agent 分发"
+        subtitle="分组批量管理：把 MCP 加入分组、把 agent 关联到分组；也支持给单个 agent 直连添加 MCP。改动后点「同步到所有 Agent」写入各配置文件。"
         actions={
           <div className="flex gap-2">
             <Btn testId="btn-dry-run" onClick={() => sync.mutate(true)}>
@@ -68,62 +121,193 @@ export function SyncPage() {
           </div>
         }
       >
-        <p className="mb-3 text-xs text-slate-400">
-          勾选即绑定；「网关」列决定写入形态——网关模式下 agent 只写一条指向网关的配置，凭证不落地。
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-2">Server</th>
-                <th className="py-2">网关</th>
-                {agentList.map((a) => (
-                  <th key={a.agentType} className="py-2 text-center">
-                    {a.displayName}
-                    {!a.detected && <span className="ml-1 text-xs text-slate-300">未装</span>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {serverList.map((s) => (
-                <tr key={s.id} className="border-b border-slate-100">
-                  <td className="py-2">
-                    <div className="font-medium">{s.name}</div>
-                    <div className="text-xs text-slate-400">{s.id}</div>
-                  </td>
-                  <td className="py-2">{s.gatewayMode ? <Badge tone="blue">网关</Badge> : <Badge tone="gray">直连</Badge>}</td>
-                  {agentList.map((a) => {
-                    const bound = a.boundServerIds.includes(s.id);
-                    const unsupported =
-                      s.transport === 'http' && !a.transports.includes('http') && !s.gatewayMode;
-                    return (
-                      <td key={a.agentType} className="py-2 text-center">
-                        <input
-                          data-testid={`cell-${s.id}-${a.agentType}`}
-                          type="checkbox"
-                          disabled={!a.detected || unsupported}
-                          checked={bound}
-                          onChange={(e) =>
-                            bind.mutate({ agentType: a.agentType, serverId: s.id, on: e.target.checked })
-                          }
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {serverList.length === 0 && (
-                <tr>
-                  <td colSpan={2 + agentList.length} className="py-6 text-center text-slate-400">
-                    注册表为空。
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+          {(
+            [
+              ['MCP Server', serverList.length],
+              ['分组', groupList.length],
+              [
+                '已关联 agent（含未安装）',
+                new Set([
+                  ...groupList.flatMap((g) => g.agentTypes),
+                  ...agentList.filter((a) => a.directServerIds.length > 0).map((a) => a.agentType),
+                ]).size,
+              ],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+              <div className="text-xs text-slate-400">{label}</div>
+              <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</div>
+            </div>
+          ))}
         </div>
       </Card>
+
+      <Card
+        title="MCP 分组"
+        subtitle="一个分组 = 一批 MCP server；agent 关联分组后即分发组内全部 server"
+        actions={
+          <Btn kind="primary" testId="btn-add-group" onClick={() => setEditing('new')}>
+            新建分组
+          </Btn>
+        }
+      >
+        {groupList.length === 0 ? (
+          <p className="py-4 text-center text-sm text-slate-400">
+            还没有分组——点「新建分组」创建，例如「常用工具」「web 开发」。
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {groupList.map((g) => (
+              <div key={g.id} data-testid={`group-card-${g.id}`} className="flex flex-col rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="truncate font-semibold text-slate-800" title={g.name}>{g.name}</span>
+                    <div className="mt-0.5 text-xs tabular-nums text-slate-400">
+                      {g.serverIds.length} 个 MCP · {g.agentTypes.length} 个 agent
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Btn small onClick={() => setEditing(g)}>编辑</Btn>
+                    <Btn small kind="danger" onClick={() => setRemoving(g)}>删除</Btn>
+                  </div>
+                </div>
+                <div className="mb-1.5 text-xs font-medium text-slate-400">包含 MCP</div>
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {g.serverIds.map((sid) => (
+                    <Chip key={sid} onRemove={() => groupServer.mutate({ groupId: g.id, serverId: sid, on: false })}>
+                      {serverName(sid)}
+                    </Chip>
+                  ))}
+                  {g.serverIds.length === 0 && <span className="text-xs text-slate-300">空分组</span>}
+                </div>
+                <div className="mb-1.5 text-xs font-medium text-slate-400">关联 Agent</div>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {g.agentTypes.map((t) => (
+                    <Chip key={t} tone="blue" onRemove={() => groupAgent.mutate({ groupId: g.id, agentType: t, on: false })}>
+                      {agentName(t)}
+                    </Chip>
+                  ))}
+                  {g.agentTypes.length === 0 && <span className="text-xs text-slate-300">未关联</span>}
+                </div>
+                <div className="mt-auto flex gap-2 border-t border-slate-100 pt-2.5">
+                  <select
+                    className={selectSmCls}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value !== '') groupServer.mutate({ groupId: g.id, serverId: e.target.value, on: true });
+                    }}
+                  >
+                    <option value="">添加 MCP 到分组…</option>
+                    {serverList
+                      .filter((s) => !g.serverIds.includes(s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                  </select>
+                  <select
+                    className={selectSmCls}
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value !== '') groupAgent.mutate({ groupId: g.id, agentType: e.target.value, on: true });
+                    }}
+                  >
+                    <option value="">关联 agent…</option>
+                    {agentList
+                      .filter((a) => !g.agentTypes.includes(a.agentType))
+                      .map((a) => (
+                        <option key={a.agentType} value={a.agentType}>{a.displayName}{a.detected ? '' : '（未装）'}</option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Agent 分发明细" subtitle="每个 agent 的有效分发 = 所属分组包含的 MCP + 直连添加的 MCP">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {agentList.map((a) => (
+            <div key={a.agentType} data-testid={`sync-agent-${a.agentType}`} className="rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-800">{a.displayName}</span>
+                  {a.detected ? <Badge tone="green">已装</Badge> : <Badge tone="gray">未发现</Badge>}
+                </div>
+                <span className="text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
+              </div>
+              <div className="mb-1.5 text-xs font-medium text-slate-400">所属分组</div>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {a.groupIds.map((gid) => (
+                  <Chip key={gid} tone="blue" onRemove={() => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: false })}>
+                    {groupName(gid)}
+                  </Chip>
+                ))}
+                {a.groupIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
+              </div>
+              <div className="mb-1.5 text-xs font-medium text-slate-400">直连 MCP</div>
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {a.directServerIds.map((sid) => (
+                  <Chip key={sid} onRemove={() => bind.mutate({ agentType: a.agentType, serverId: sid, on: false })}>
+                    {serverName(sid)}
+                  </Chip>
+                ))}
+                {a.directServerIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
+              </div>
+              <div className="flex gap-2 border-t border-slate-100 pt-2.5">
+                <select
+                  className={selectSmCls}
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value !== '') groupAgent.mutate({ groupId: e.target.value, agentType: a.agentType, on: true });
+                  }}
+                >
+                  <option value="">加入分组…</option>
+                  {groupList
+                    .filter((g) => !g.agentTypes.includes(a.agentType))
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}（{g.serverIds.length} 个 MCP）</option>
+                    ))}
+                </select>
+                <select
+                  className={selectSmCls}
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value !== '') bind.mutate({ agentType: a.agentType, serverId: e.target.value, on: true });
+                  }}
+                >
+                  <option value="">直连添加 MCP…</option>
+                  {serverList
+                    .filter((s) => !a.directServerIds.includes(s.id))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {editing !== null && (
+        <GroupEditModal
+          group={editing === 'new' ? null : editing}
+          saving={saveGroup.isPending}
+          servers={serverList}
+          agents={agentList}
+          onSave={(g) => saveGroup.mutate(g)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {removing !== null && (
+        <ConfirmDialog
+          title="删除分组"
+          message={`确定删除分组「${removing.name}」？组内 ${removing.serverIds.length} 个 MCP 不会被删除；已写入 agent 的配置会在下次同步时收敛清理。`}
+          onConfirm={() => deleteGroupMut.mutate(removing.id)}
+          onCancel={() => setRemoving(null)}
+        />
+      )}
 
       {report !== null && (
         <Card title={dryRun ? '变更预览（未落盘）' : '同步结果'}>
@@ -169,5 +353,74 @@ export function SyncPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function GroupEditModal(props: {
+  group: GroupInfo | null;
+  saving: boolean;
+  servers: ServerDefDTO[];
+  agents: AgentInfo[];
+  onSave: (g: { id?: string; name: string; serverIds: string[]; agentTypes: string[] }) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(props.group?.name ?? '');
+  const [serverIds, setServerIds] = useState<string[]>(props.group?.serverIds ?? []);
+  const [agentTypes, setAgentTypes] = useState<string[]>(props.group?.agentTypes ?? []);
+  const toggle = (list: string[], v: string, set: (l: string[]) => void): void => {
+    set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  };
+  return (
+    <Modal
+      title={props.group !== null ? `编辑分组：${props.group.name}` : '新建分组'}
+      onClose={props.onClose}
+      footer={
+        <>
+          <Btn onClick={props.onClose}>取消</Btn>
+          <Btn kind="primary" testId="group-save" disabled={props.saving || name.trim() === ''} onClick={() => props.onSave({ id: props.group?.id, name: name.trim(), serverIds, agentTypes })}>
+            保存
+          </Btn>
+        </>
+      }
+    >
+      <Field label="分组名称">
+        <input data-testid="group-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：常用工具" />
+      </Field>
+      <Field label={`包含的 MCP（${serverIds.length} 个）`}>
+        <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
+          {props.servers.length === 0 && <p className="px-1 py-0.5 text-xs text-slate-400">注册表为空，先去「MCP 发现」或「MCP 管理」添加。</p>}
+          {props.servers.map((s) => (
+            <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-slate-50">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                data-testid={`group-server-${s.id}`}
+                checked={serverIds.includes(s.id)}
+                onChange={() => toggle(serverIds, s.id, setServerIds)}
+              />
+              <span className="font-medium text-slate-700">{s.name}</span>
+              <span className="font-mono text-xs text-slate-400">{s.id}</span>
+            </label>
+          ))}
+        </div>
+      </Field>
+      <Field label={`关联的 agent（${agentTypes.length} 个）`} hint="关联后该 agent 即分发组内全部 MCP">
+        <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 p-2">
+          {props.agents.map((a) => (
+            <label key={a.agentType} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-slate-50">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                data-testid={`group-agent-${a.agentType}`}
+                checked={agentTypes.includes(a.agentType)}
+                onChange={() => toggle(agentTypes, a.agentType, setAgentTypes)}
+              />
+              <span className="font-medium text-slate-700">{a.displayName}</span>
+              {!a.detected && <span className="text-xs text-slate-300">未安装</span>}
+            </label>
+          ))}
+        </div>
+      </Field>
+    </Modal>
   );
 }

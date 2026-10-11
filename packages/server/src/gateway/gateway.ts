@@ -1,5 +1,7 @@
 import { promises as fs, statSync, readFileSync, openSync, readSync, closeSync } from 'node:fs';
 import path from 'node:path';
+import { effectiveBoundIds } from '@mcp-manager/core';
+import type { AgentType } from '@mcp-manager/core';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { checkToken, sendError } from '../http-util.js';
 import type { Daemon, GatewayHttpHandler, GatewayStatus } from '../daemon.js';
@@ -109,11 +111,12 @@ export class Gateway {
       const snap = this.mgr.snapshots().find((s) => s.id === id);
       return { ok: true, state: snap?.status };
     };
-    this.daemon.probeTools = async (id) => {
+    this.daemon.probeTools = async (id, refresh = false) => {
       const upstream = this.mgr.get(id);
       if (!upstream) return null;
       try {
-        const tools = await upstream.listTools(true);
+        // 缓存优先：工具列表抓取慢（需拉起上游进程），已抓过直接返回；refresh=1 才强制重抓
+        const tools = await upstream.listTools(!refresh);
         return tools.map((t) => ({
           name: t.name,
           ...(t.description ? { description: t.description } : {}),
@@ -231,13 +234,9 @@ export class Gateway {
           onCall: (r) => this.recordCall(r),
         });
       } else if (agentScope !== null) {
-        // M3.3 G13：per-agent 分组端点——该 agent 绑定的网关 server 子集
+        // per-agent 分组端点——该 agent 的有效绑定（直连 + 分组）网关 server 子集
         scope = `agent:${agentScope}`;
-        const bound = new Set(
-          this.daemon.config.bindings
-            .filter((b) => b.agentType === agentScope)
-            .map((b) => b.serverId),
-        );
+        const bound = effectiveBoundIds(this.daemon.config, agentScope as AgentType);
         server = createAggregateServer(this.mgr, {
           scope,
           onCall: (r) => this.recordCall(r),

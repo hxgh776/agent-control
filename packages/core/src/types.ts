@@ -46,6 +46,16 @@ export interface AgentBinding {
   addedAt: string;
 }
 
+/** 分组：一批 server 打包分发给一批 agent。agent 的有效绑定 = 直连绑定 ∪ 所属分组包含的 server。 */
+export interface ServerGroup {
+  id: string;
+  name: string;
+  serverIds: string[];
+  agentTypes: AgentType[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** 网关聚合配置在各 agent 配置文件中占用的公共键名 */
 export const GATEWAY_KEY = 'mcp-manager-gateway';
 
@@ -77,6 +87,7 @@ export interface ManagerConfig {
   version: 1;
   servers: ServerDef[];
   bindings: AgentBinding[];
+  groups: ServerGroup[];
   syncState: Partial<Record<AgentType, AgentSyncState>>;
   settings: Settings;
 }

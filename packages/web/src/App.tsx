@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, getToken, setToken } from './api';
 import type { StatusInfo } from './api';
+import { Icon, Spinner } from './ui';
 import { StatusPage } from './pages/StatusPage';
 import { ServersPage } from './pages/ServersPage';
 import { SyncPage } from './pages/SyncPage';
@@ -10,15 +11,15 @@ import { LogsPage } from './pages/LogsPage';
 import { DiscoveryPage } from './pages/DiscoveryPage';
 
 const TABS = [
-  { key: 'status', label: '概览' },
-  { key: 'servers', label: 'Server 注册表' },
-  { key: 'discovery', label: '发现' },
-  { key: 'sync', label: '分发' },
-  { key: 'gateway', label: '网关' },
-  { key: 'logs', label: '日志' },
+  { key: 'status', label: '概览', icon: 'status', desc: '守护进程状态、运行环境与本机 Agent' },
+  { key: 'servers', label: 'MCP 管理', icon: 'servers', desc: '所有 MCP server 的统一管理：注册、启停与工具开关' },
+  { key: 'discovery', label: 'MCP 发现', icon: 'discovery', desc: '浏览官方 / Smithery / npm 源，一键收录' },
+  { key: 'sync', label: 'Agent 分发', icon: 'sync', desc: '分组管理，一次配置同步到 Claude Code、Cursor 等 agent' },
+  { key: 'gateway', label: '聚合网关', icon: 'gateway', desc: '多个 MCP 聚合为一个端点、访问令牌与上游进程' },
+  { key: 'logs', label: '调用日志', icon: 'logs', desc: '网关调用记录与上游进程输出' },
 ] as const;
 
-type TabKey = (typeof TABS)[number]['key'];
+export type TabKey = (typeof TABS)[number]['key'];
 
 function initialTab(): TabKey {
   const t = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
@@ -30,7 +31,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>(initialTab);
   const queryClient = useQueryClient();
 
-  // D7：先探测令牌开关——默认关闭时直接进入，不显示令牌门
+  // 先探测令牌开关——默认关闭时直接进入，不显示令牌门
   const authInfo = useQuery({
     queryKey: ['auth-info'],
     queryFn: () => api.get<{ authRequired: boolean }>('/api/auth/info'),
@@ -57,8 +58,13 @@ export default function App() {
     window.history.replaceState(null, '', url);
   };
 
-  if (authInfo.isLoading) {
-    return <div className="p-10 text-slate-500">连接 daemon…</div>;
+  if (authInfo.isLoading || status.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center gap-3 text-sm text-slate-500">
+        <Spinner className="h-5 w-5 text-brand-600" />
+        连接 daemon…
+      </div>
+    );
   }
   if (needsGate) {
     return (
@@ -71,50 +77,87 @@ export default function App() {
     );
   }
 
-  if (status.isLoading) {
-    return <div className="p-10 text-slate-500">连接 daemon…</div>;
-  }
   if (status.isError) {
     return (
-      <div className="p-10">
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-red-700">
-          无法连接 daemon（{String((status.error as Error).message)}）。请确认已运行 <code>mcpmgr start</code>。
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="flex max-w-md items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-relaxed text-rose-700">
+          <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            无法连接 daemon（{String((status.error as Error).message)}）。请确认已运行{' '}
+            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-xs">mcpmgr start</code>。
+          </div>
         </div>
       </div>
     );
   }
 
+  const gwRunning = status.data?.gateway.running === true;
+  const current = TABS.find((t) => t.key === tab) ?? TABS[0];
+
   return (
-    <div className="mx-auto min-h-screen max-w-6xl p-6">
-      <header className="mb-6 flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">MCP Manager</h1>
-        <span className="text-sm text-slate-400">
-          v{status.data!.version} · 端口 {status.data!.port}
-        </span>
-      </header>
-      <nav className="mb-6 flex gap-1 border-b border-slate-200">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            data-testid={`tab-${t.key}`}
-            onClick={() => switchTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium ${
-              tab === t.key
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-      <main>
-        {tab === 'status' && <StatusPage />}
-        {tab === 'servers' && <ServersPage />}
-        {tab === 'discovery' && <DiscoveryPage />}
-        {tab === 'sync' && <SyncPage />}
-        {tab === 'gateway' && <GatewayPage />}
-        {tab === 'logs' && <LogsPage />}
+    <div className="flex h-screen overflow-hidden">
+      <aside className="flex w-56 shrink-0 flex-col bg-slate-950">
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/[0.06] px-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-sm font-bold text-white shadow-lg shadow-brand-500/30">
+            M
+          </div>
+          <div className="leading-tight">
+            <div className="text-[15px] font-semibold text-white">MCP Manager</div>
+            <div className="mt-0.5 text-xs tabular-nums text-slate-500">
+              v{status.data?.version} · 端口 {status.data?.port}
+            </div>
+          </div>
+        </div>
+        <nav data-testid="sidebar" className="flex-1 space-y-1 overflow-y-auto p-3">
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                data-testid={`tab-${t.key}`}
+                onClick={() => switchTab(t.key)}
+                className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
+                  active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                }`}
+              >
+                <Icon
+                  name={t.icon}
+                  className={`h-4.5 w-4.5 shrink-0 transition-colors ${
+                    active ? 'text-brand-300' : 'text-slate-500 group-hover:text-slate-300'
+                  }`}
+                />
+                {t.label}
+                {active && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="shrink-0 border-t border-white/[0.06] p-3">
+          <div className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-slate-400">
+            <span className="relative flex h-2 w-2 shrink-0">
+              {gwRunning && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              )}
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${gwRunning ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+            </span>
+            网关{gwRunning ? '运行中' : '已停止'}
+          </div>
+        </div>
+      </aside>
+      <main className="flex-1 overflow-y-auto">
+        {/* 不做页面级入场动画：初帧时间线被节流的环境（无头截图/后台标签）会停在透明第一帧 */}
+        <div className="mx-auto max-w-6xl px-8 py-8">
+          <header className="mb-6">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{current.label}</h1>
+            <p className="mt-1 text-sm text-slate-500">{current.desc}</p>
+          </header>
+          {tab === 'status' && <StatusPage onNavigate={switchTab} />}
+          {tab === 'servers' && <ServersPage />}
+          {tab === 'discovery' && <DiscoveryPage onNavigate={switchTab} />}
+          {tab === 'sync' && <SyncPage />}
+          {tab === 'gateway' && <GatewayPage onNavigate={switchTab} />}
+          {tab === 'logs' && <LogsPage />}
+        </div>
       </main>
     </div>
   );
@@ -133,15 +176,24 @@ function TokenGate({ onOk }: { onOk: () => void }) {
     }
   };
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="w-96 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-2 text-xl font-bold">MCP Manager</h1>
-        <p className="mb-4 text-sm text-slate-500">
-          输入访问令牌（见 <code>~/.mcp-manager/config.json</code> 的 settings.token，或 <code>mcpmgr status</code>）
+    <div className="flex min-h-screen items-center justify-center bg-slate-950">
+      <div className="w-96 animate-scale-in rounded-2xl bg-white p-8 shadow-pop">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-base font-bold text-white shadow-lg shadow-brand-500/30">
+            M
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">MCP Manager</h1>
+            <p className="text-xs text-slate-400">本机守护进程访问</p>
+          </div>
+        </div>
+        <p className="mb-4 text-xs leading-relaxed text-slate-500">
+          输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.mcp-manager/config.json</code>{' '}
+          的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">mcpmgr status</code>）
         </p>
         <input
           data-testid="token-input"
-          className="mb-3 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          className="mb-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
           type="password"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -150,10 +202,12 @@ function TokenGate({ onOk }: { onOk: () => void }) {
           }}
           placeholder="daemon access token"
         />
-        {error !== '' && <div className="mb-3 text-sm text-red-600">{error}</div>}
+        {error !== '' && (
+          <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm leading-relaxed text-rose-700">{error}</div>
+        )}
         <button
           data-testid="token-submit"
-          className="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="h-10 w-full rounded-lg bg-brand-600 text-sm font-medium text-white shadow-sm shadow-brand-600/25 transition-all duration-150 hover:bg-brand-500 active:scale-[0.98]"
           onClick={() => void tryAuth()}
         >
           进入

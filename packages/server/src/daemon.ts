@@ -65,7 +65,8 @@ export class Daemon {
 
   /** 以下钩子由 gateway 模块（M1.5）注入；缺省时 API 返回 503 */
   upstreamControl?: (id: string, action: 'start' | 'stop' | 'restart') => Promise<{ ok: boolean; state?: string }>;
-  probeTools?: (id: string) => Promise<Array<{ name: string; description?: string; enabled: boolean }> | null>;
+  /** refresh=false 时优先返回缓存（上游已连过即秒回），true 强制重新抓取 */
+  probeTools?: (id: string, refresh?: boolean) => Promise<Array<{ name: string; description?: string; enabled: boolean }> | null>;
   upstreamLogs?: (id: string) => string[];
   recentCalls?: () => unknown[];
   /** M3.1 调试台（S6） */

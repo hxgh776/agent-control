@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
-import { Badge, Btn, Card, ErrorBanner, OkBanner } from '../ui';
+import { Badge, Btn, Card, ErrorBanner, OkBanner, rowCls, theadCls } from '../ui';
+import type { TabKey } from '../App';
 
-export function StatusPage() {
+export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function StatusPage() {
   const doImport = useMutation({
     mutationFn: (fingerprints: string[]) => api.post<{ added: unknown[] }>('/api/import', { fingerprints }),
     onSuccess: (res) => {
-      setOk(`已导入 ${res.added.length} 个 server，去「分发」页勾选同步`);
+      setOk(`已导入 ${res.added.length} 个 server，去「Agent 分发」页勾选同步`);
       setError(null);
       void qc.invalidateQueries();
     },
@@ -34,98 +36,106 @@ export function StatusPage() {
   });
 
   const pending = (imports.data?.groups ?? []).filter((g) => !g.alreadyImported);
+  const detectedCount = (agents.data?.agents ?? []).filter((a) => a.detected).length;
 
   return (
     <div>
       <ErrorBanner message={error} />
       <OkBanner message={ok} />
 
-      <Card title="Daemon">
-        <dl className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-          <div>
-            <dt className="text-slate-400">数据目录</dt>
-            <dd data-testid="home-dir" className="break-all">{status.data?.homeDir}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-400">运行端口</dt>
-            <dd>{status.data?.port}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-400">已运行</dt>
-            <dd>{status.data?.uptimeSec}s</dd>
-          </div>
-          <div>
-            <dt className="text-slate-400">注册表 / 绑定</dt>
-            <dd>
-              {status.data?.serverCount} / {status.data?.bindingCount}
+      <Card title="运行状态">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3 xl:grid-cols-5">
+          <div className="min-w-0 md:col-span-2 xl:col-span-1">
+            <dt className="text-xs text-slate-400">数据目录</dt>
+            <dd data-testid="home-dir" className="mt-1">
+              <span className="break-all font-mono text-xs leading-relaxed text-slate-600" title={status.data?.homeDir}>
+                {status.data?.homeDir}
+              </span>
             </dd>
           </div>
+          <Stat label="运行端口">{status.data?.port}</Stat>
+          <Stat label="已运行">
+            {Math.floor((status.data?.uptimeSec ?? 0) / 60)} 分 {((status.data?.uptimeSec ?? 0) % 60)} 秒
+          </Stat>
+          <Stat label="Server / 分组 / 直连绑定">
+            {status.data?.serverCount} / {status.data?.groupCount ?? 0} / {status.data?.bindingCount}
+          </Stat>
+          <Stat label="已检测到 Agent">
+            {detectedCount} / {(agents.data?.agents ?? []).length}
+          </Stat>
         </dl>
-      </Card>
-
-      <Card title="运行环境">
-        <div className="flex flex-wrap gap-2">
+        <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           {(environment.data?.tools ?? []).map((t) => (
-            <div
+            <span
               key={t.name}
-              className="rounded border border-slate-200 px-3 py-1.5 text-sm"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs shadow-sm"
               title={`${t.role}${t.version !== undefined ? ` · ${t.version}` : ''}`}
             >
-              {t.found ? <Badge tone="green">{t.name}</Badge> : <Badge tone="red">{t.name} 缺失</Badge>}
-              <span className="ml-2 text-xs text-slate-400">{t.role}</span>
-            </div>
+              <span className={`h-1.5 w-1.5 rounded-full ${t.found ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span className="font-medium text-slate-700">{t.name}</span>
+              <span className="text-slate-400">{t.found ? t.role : `${t.role} · 缺失`}</span>
+            </span>
           ))}
         </div>
       </Card>
 
       <Card
         title="本机 Coding Agent"
+        subtitle={`已安装 ${detectedCount} 个；点 agent 卡片可到「Agent 分发」页配置`}
         actions={
           <Btn small onClick={() => void agents.refetch()}>
             重新探测
           </Btn>
         }
       >
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {(agents.data?.agents ?? []).map((a) => (
-            <div key={a.agentType} data-testid={`agent-card-${a.agentType}`} className="min-w-0 overflow-hidden rounded border border-slate-200 p-3">
+            <button
+              key={a.agentType}
+              data-testid={`agent-card-${a.agentType}`}
+              onClick={() => onNavigate?.('sync')}
+              className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
+            >
               <div className="mb-1 flex items-center justify-between gap-1">
-                <span className="truncate font-medium" title={a.displayName}>{a.displayName}</span>
+                <span className="truncate text-sm font-semibold text-slate-800" title={a.displayName}>
+                  {a.displayName}
+                </span>
                 {a.detected ? <Badge tone="green">已装</Badge> : <Badge tone="gray">未发现</Badge>}
               </div>
-              <div className="truncate text-xs text-slate-400" title={a.configPaths[0]}>
+              <div className="truncate font-mono text-xs text-slate-400" title={a.configPaths[0]}>
                 {a.configPaths[0]}
               </div>
               <div className="mt-2 text-xs text-slate-500">
-                绑定 {a.boundServerIds.length} 个 server
+                分发 <span className="font-semibold tabular-nums text-slate-700">{a.boundServerIds.length}</span>{' '}
+                个 MCP（含分组）
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </Card>
 
-      <Card title="从现有配置导入（冷启动）">
+      <Card title="从现有配置导入" subtitle="扫描各 agent 已有的 MCP 配置，一键收编进注册表">
         {pending.length === 0 ? (
           <p className="text-sm text-slate-500">没有发现可导入的新 server 配置。</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-2">名称</th>
-                <th className="py-2">传输</th>
-                <th className="py-2">来源</th>
-                <th className="py-2"></th>
+              <tr className={theadCls}>
+                <th className="py-2.5">名称</th>
+                <th className="py-2.5">传输</th>
+                <th className="py-2.5">来源</th>
+                <th className="py-2.5"></th>
               </tr>
             </thead>
             <tbody>
               {pending.map((g) => (
-                <tr key={g.fingerprint} className="border-b border-slate-100">
-                  <td className="py-2">{g.suggested.name}</td>
-                  <td className="py-2">{g.suggested.transport}</td>
-                  <td className="py-2 text-xs text-slate-500">
+                <tr key={g.fingerprint} className={rowCls}>
+                  <td className="py-2.5 font-medium text-slate-800">{g.suggested.name}</td>
+                  <td className="py-2.5">{g.suggested.transport}</td>
+                  <td className="py-2.5 text-xs text-slate-500">
                     {g.candidates.map((c) => c.agentType).join(', ')}
                   </td>
-                  <td className="py-2 text-right">
+                  <td className="py-2.5 text-right">
                     <Btn
                       small
                       kind="primary"
@@ -141,6 +151,15 @@ export function StatusPage() {
           </table>
         )}
       </Card>
+    </div>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-400">{label}</dt>
+      <dd className="mt-1 truncate text-[15px] font-semibold tabular-nums text-slate-900">{children}</dd>
     </div>
   );
 }

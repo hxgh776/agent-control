@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RuntimeTool, ServerDefDTO, ToolInfo } from '../api';
-import { Badge, Btn, Card, ErrorBanner, Field, OkBanner, inputCls } from '../ui';
+import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Field, Icon, Modal, OkBanner, Spinner, Toggle, inputCls } from '../ui';
 
 interface FormState {
   id?: string;
@@ -60,6 +60,7 @@ export function ServersPage() {
   const [ok, setOk] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [toolsFor, setToolsFor] = useState<ServerDefDTO | null>(null);
+  const [removing, setRemoving] = useState<ServerDefDTO | null>(null);
 
   const servers = useQuery({
     queryKey: ['servers'],
@@ -122,7 +123,11 @@ export function ServersPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`/api/servers/${id}`),
-    onSuccess: () => void qc.invalidateQueries(),
+    onSuccess: (_res, id) => {
+      setRemoving(null);
+      setOk(`已删除 ${id}（agent 配置片段会在下次分发时清理）`);
+      void qc.invalidateQueries();
+    },
     onError: (e) => setError(String((e as Error).message)),
   });
 
@@ -133,107 +138,108 @@ export function ServersPage() {
     onError: (e) => setError(String((e as Error).message)),
   });
 
+  const list = servers.data?.servers ?? [];
+
   return (
     <div>
       <ErrorBanner message={error} />
       <OkBanner message={ok} />
 
       <Card
-        title="MCP Server 注册表"
+        title="MCP 管理"
+        subtitle={`共 ${list.length} 个 server；新增/编辑在弹窗中进行`}
         actions={
           <Btn kind="primary" testId="btn-add-server" onClick={() => setForm({ ...EMPTY })}>
             添加 Server
           </Btn>
         }
       >
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-slate-500">
-              <th className="py-2">ID / 名称</th>
-              <th className="py-2">传输</th>
-              <th className="py-2">模式</th>
-              <th className="py-2">状态</th>
-              <th className="py-2 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(servers.data?.servers ?? []).map((s) => (
-              <tr key={s.id} data-testid={`server-row-${s.id}`} className="border-b border-slate-100">
-                <td className="py-2">
-                  <div className="font-medium">
-                    {s.name}
-                    {runtimeWarning(s) !== null && (
-                      <span className="ml-2" title={runtimeWarning(s) ?? ''}>
-                        <Badge tone="amber">⚠ {runtimeWarning(s)}</Badge>
-                      </span>
-                    )}
+        {list.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
+            <Icon name="servers" className="h-8 w-8 text-slate-300" />
+            <p className="text-sm text-slate-400">还没有 server——去「MCP 发现」添加，或在「概览」导入现有配置。</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {list.map((s) => {
+              const warn = runtimeWarning(s);
+              return (
+                <div
+                  key={s.id}
+                  data-testid={`server-row-${s.id}`}
+                  className="flex flex-col rounded-xl border border-slate-200 p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-card-hover"
+                >
+                  <div className="mb-1.5 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium" title={s.name}>{s.name}</span>
+                        {s.gatewayMode ? <Badge tone="blue">网关</Badge> : <Badge tone="gray">直连</Badge>}
+                      </div>
+                      <div className="truncate text-xs text-slate-400" title={s.id}>{s.id}</div>
+                    </div>
+                    {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
                   </div>
-                  <div className="text-xs text-slate-400">{s.id}</div>
-                </td>
-                <td className="py-2">{s.transport === 'stdio' ? s.command : s.url}</td>
-                <td className="py-2">
-                  {s.gatewayMode ? <Badge tone="blue">网关</Badge> : <Badge tone="gray">直连</Badge>}
-                </td>
-                <td className="py-2">
-                  {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
-                </td>
-                <td className="py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Btn small onClick={() => setForm(toForm(s))}>
-                      编辑
-                    </Btn>
-                    <Btn small onClick={() => setToolsFor(s)}>
-                      工具
-                    </Btn>
+                  <div className="mb-2 truncate font-mono text-xs text-slate-500" title={s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}>
+                    {s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}
+                  </div>
+                  {warn !== null && (
+                    <div className="mb-2">
+                      <Badge tone="amber">⚠ {warn}</Badge>
+                    </div>
+                  )}
+                  <div className="mt-auto flex gap-2 border-t border-slate-100 pt-2.5">
+                    <Btn small onClick={() => setForm(toForm(s))}>编辑</Btn>
+                    <Btn small onClick={() => setToolsFor(s)}>工具</Btn>
                     <Btn
                       small
                       onClick={() => void quickToggle.mutate({ id: s.id, body: { enabled: !s.enabled } })}
                     >
                       {s.enabled ? '停用' : '启用'}
                     </Btn>
-                    <Btn small kind="danger" onClick={() => void remove.mutate(s.id)}>
-                      删除
-                    </Btn>
+                    <Btn small kind="danger" onClick={() => setRemoving(s)}>删除</Btn>
                   </div>
-                </td>
-              </tr>
-            ))}
-            {(servers.data?.servers ?? []).length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-400">
-                  还没有 server——去「概览」导入现有配置，或点右上角添加。
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {form !== null && (
-        <ServerForm
-          form={form}
-          setForm={setForm}
-          saving={save.isPending}
-          onSave={() => save.mutate(form)}
-          onCancel={() => setForm(null)}
-        />
+        <Modal
+          title={form.id !== undefined ? `编辑：${form.name || form.id}` : '添加 Server'}
+          onClose={() => setForm(null)}
+          wide
+          footer={
+            <>
+              <Btn onClick={() => setForm(null)}>取消</Btn>
+              <Btn kind="primary" testId="form-save" disabled={save.isPending} onClick={() => save.mutate(form)}>
+                {save.isPending ? '保存中…' : '保存'}
+              </Btn>
+            </>
+          }
+        >
+          <ServerForm form={form} setForm={setForm} />
+        </Modal>
       )}
       {toolsFor !== null && <ToolsModal server={toolsFor} onClose={() => setToolsFor(null)} />}
+      {removing !== null && (
+        <ConfirmDialog
+          title="删除 Server"
+          message={`确定删除「${removing.name}」（${removing.id}）？已分发到 agent 的配置片段会在下次分发时自动清理。`}
+          onConfirm={() => remove.mutate(removing.id)}
+          onCancel={() => setRemoving(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ServerForm(props: {
-  form: FormState;
-  setForm: (f: FormState) => void;
-  saving: boolean;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  const f = props.form;
-  const set = (patch: Partial<FormState>): void => props.setForm({ ...f, ...patch });
+function ServerForm({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+  const f = form;
+  const set = (patch: Partial<FormState>): void => setForm({ ...f, ...patch });
   return (
-    <Card title={f.id !== undefined ? `编辑：${f.id}` : '添加 Server'}>
+    <div>
       <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
         <div>
           <Field label="名称">
@@ -282,31 +288,19 @@ function ServerForm(props: {
         </div>
         <div>
           <Field label="分发模式">
-            <label className="flex items-center gap-2">
-              <input
-                data-testid="form-gateway"
-                type="checkbox"
-                checked={f.gatewayMode}
-                onChange={(e) => set({ gatewayMode: e.target.checked })}
-              />
-              <span>网关模式（agent 侧只写一条指向网关的配置，凭证不落地）</span>
-            </label>
+            <Toggle
+              testId="form-gateway"
+              checked={f.gatewayMode}
+              onChange={(v) => set({ gatewayMode: v })}
+              label="网关模式（agent 侧只写一条指向网关的配置，凭证不落地）"
+            />
           </Field>
           <Field label="启用">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={f.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
-              <span>参与分发与网关聚合</span>
-            </label>
+            <Toggle checked={f.enabled} onChange={(v) => set({ enabled: v })} label="参与分发与网关聚合" />
           </Field>
         </div>
       </div>
-      <div className="mt-2 flex gap-2">
-        <Btn kind="primary" testId="form-save" disabled={props.saving} onClick={props.onSave}>
-          保存
-        </Btn>
-        <Btn onClick={props.onCancel}>取消</Btn>
-      </div>
-    </Card>
+    </div>
   );
 }
 
@@ -317,10 +311,13 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
   const [argsText, setArgsText] = useState('{}');
   const [result, setResult] = useState<string | null>(null);
   const [invoking, setInvoking] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const tools = useQuery({
-    queryKey: ['tools', server.id],
-    queryFn: () => api.get<{ tools: ToolInfo[] }>(`/api/servers/${server.id}/tools`),
+    queryKey: ['tools', server.id, refresh],
+    queryFn: () => api.get<{ tools: ToolInfo[] }>(`/api/servers/${server.id}/tools${refresh > 0 ? '?refresh=1' : ''}`),
     retry: false,
+    // 默认走服务端缓存，秒开；强制刷新时才需要等上游
+    staleTime: refresh > 0 ? 0 : 60_000,
   });
 
   const toggle = useMutation({
@@ -363,43 +360,49 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
   };
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div
-        data-testid="tools-modal"
-        className="max-h-[80vh] w-[640px] overflow-auto rounded-lg bg-white p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">工具开关：{server.id}</h3>
-          <Btn small onClick={onClose}>
-            关闭
-          </Btn>
+    <Modal title={`工具列表：${server.id}`} onClose={onClose} wide>
+      <ErrorBanner message={error} />
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-400">
+          {tools.isPending
+            ? '正在连接上游并获取工具列表；首次启动可能较慢（如 npx 需先下载包），已缓存时秒开。'
+            : `共 ${tools.data?.tools.length ?? 0} 个工具；开关即时生效，勾选决定网关暴露哪些工具。`}
+        </p>
+        <Btn small disabled={tools.isPending} onClick={() => setRefresh((n) => n + 1)} title="忽略缓存，重新从上游抓取工具列表">
+          刷新
+        </Btn>
+      </div>
+      {tools.isError && (
+        <p className="mb-3 text-sm text-amber-600">
+          无法获取工具列表（{String((tools.error as Error).message)}）。网关需要能连接上游后才能列出工具。
+        </p>
+      )}
+      {tools.isPending ? (
+        <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-400">
+          <Spinner className="h-4 w-4 text-brand-600" />
+          正在连接上游并获取工具列表…
         </div>
-        <ErrorBanner message={error} />
-        {tools.isError && (
-          <p className="text-sm text-amber-600">
-            无法获取工具列表（{String((tools.error as Error).message)}）。网关需要能连接上游后才能列出工具。
-          </p>
-        )}
+      ) : (
         <table className="w-full text-sm">
           <tbody>
             {(tools.data?.tools ?? []).map((t) => (
-              <tr key={t.name} className="border-b border-slate-100">
-                <td className="py-2">
-                  <div className="font-medium">{t.name}</div>
+              <tr key={t.name} className="border-b border-slate-100 transition-colors hover:bg-slate-50/60">
+                <td className="py-2.5">
+                  <div className="font-medium text-slate-800">{t.name}</div>
                   {t.description !== undefined && (
-                    <div className="text-xs text-slate-400">{t.description}</div>
+                    <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{t.description}</div>
                   )}
                 </td>
-                <td className="w-28 py-2 text-right">
+                <td className="w-16 py-2.5 text-right">
                   <Btn small onClick={() => { setDebugTool(t.name); setResult(null); setError(null); setArgsText('{}'); }}>
                     调试
                   </Btn>
                 </td>
-                <td className="w-20 py-2 text-right">
-                  <label className="inline-flex items-center gap-2">
+                <td className="w-20 py-2.5 text-right">
+                  <label className="inline-flex cursor-pointer items-center gap-2">
                     <input
                       type="checkbox"
+                      className="h-4 w-4"
                       checked={t.enabled}
                       onChange={(e) => setEnabled(t.name, e.target.checked)}
                     />
@@ -408,33 +411,41 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
                 </td>
               </tr>
             ))}
+            {(tools.data?.tools ?? []).length === 0 && (
+              <tr>
+                <td className="py-6 text-center text-slate-400">上游没有暴露任何工具。</td>
+              </tr>
+            )}
           </tbody>
         </table>
+      )}
 
-        {debugTool !== null && (
-          <div data-testid="debug-panel" className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
-            <h4 className="mb-2 text-sm font-semibold">调试：{debugTool}</h4>
-            <textarea
-              data-testid="debug-args"
-              className={`${inputCls} h-20 font-mono`}
-              value={argsText}
-              onChange={(e) => setArgsText(e.target.value)}
-              placeholder='{"message": "hello"}'
-            />
-            <div className="mt-2 flex items-center gap-2">
-              <Btn small kind="primary" disabled={invoking} onClick={() => void runDebug()}>
-                运行
-              </Btn>
-              {invoking && <span className="text-xs text-slate-400">调用中…</span>}
-            </div>
-            {result !== null && (
-              <pre data-testid="debug-result" className="mt-2 max-h-48 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">
-                {result}
-              </pre>
-            )}
+      {debugTool !== null && (
+        <div data-testid="debug-panel" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">调试：{debugTool}</h4>
+          <textarea
+            data-testid="debug-args"
+            className={`${inputCls} h-20 font-mono`}
+            value={argsText}
+            onChange={(e) => setArgsText(e.target.value)}
+            placeholder='{"message": "hello"}'
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Btn small kind="primary" disabled={invoking} onClick={() => void runDebug()}>
+              运行
+            </Btn>
+            {invoking && <span className="text-xs text-slate-400">调用中…</span>}
           </div>
-        )}
-      </div>
-    </div>
+          {result !== null && (
+            <pre
+              data-testid="debug-result"
+              className="mt-3 max-h-48 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-xs leading-relaxed text-slate-200 ring-1 ring-white/10"
+            >
+              {result}
+            </pre>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -8,6 +8,7 @@ import type {
   AgentType,
   ManagerConfig,
   ServerDef,
+  ServerGroup,
   TransportType,
 } from './types.js';
 
@@ -77,6 +78,12 @@ export function upsertServer(config: ManagerConfig, input: UpsertServerInput): S
 export function deleteServer(config: ManagerConfig, id: string): void {
   config.servers = config.servers.filter((s) => s.id !== id);
   config.bindings = config.bindings.filter((b) => b.serverId !== id);
+  for (const g of config.groups) {
+    if (g.serverIds.includes(id)) {
+      g.serverIds = g.serverIds.filter((sid) => sid !== id);
+      g.updatedAt = new Date().toISOString();
+    }
+  }
   // 对应的 agent 配置片段由下一次 sync 时按 syncState 收敛移除
 }
 
@@ -95,11 +102,109 @@ export function removeBinding(config: ManagerConfig, serverId: string, agentType
   );
 }
 
-export function boundServers(config: ManagerConfig, agentType: AgentType): ServerDef[] {
+/** agent 的有效绑定 server 集合（直连 ∪ 分组），供网关过滤与 UI 展示共用 */
+export function effectiveBoundIds(config: ManagerConfig, agentType: AgentType): Set<string> {
   const ids = new Set(
     config.bindings.filter((b) => b.agentType === agentType).map((b) => b.serverId),
   );
+  for (const g of config.groups ?? []) {
+    if (g.agentTypes.includes(agentType)) {
+      for (const sid of g.serverIds) ids.add(sid);
+    }
+  }
+  return ids;
+}
+
+export function boundServers(config: ManagerConfig, agentType: AgentType): ServerDef[] {
+  const ids = effectiveBoundIds(config, agentType);
   return config.servers.filter((s) => ids.has(s.id));
+}
+
+// —— 分组 CRUD（M4 分发重构：分组批量管理 server × agent） ——
+
+export interface UpsertGroupInput {
+  id?: string;
+  name: string;
+  serverIds?: string[];
+  agentTypes?: AgentType[];
+}
+
+export function upsertGroup(config: ManagerConfig, input: UpsertGroupInput): ServerGroup {
+  const now = new Date().toISOString();
+  const serverIds = [...new Set(input.serverIds ?? [])].filter((sid) =>
+    config.servers.some((s) => s.id === sid),
+  );
+  const agentTypes = [...new Set(input.agentTypes ?? [])];
+  if (input.id) {
+    const existing = config.groups.find((g) => g.id === input.id);
+    if (existing) {
+      existing.name = input.name;
+      existing.serverIds = serverIds;
+      existing.agentTypes = agentTypes;
+      existing.updatedAt = now;
+      return existing;
+    }
+  }
+  const base = SLUG_RE.test(input.name)
+    ? input.name
+    : (slugify(input.name) === 'server' ? 'group' : slugify(input.name)); // 纯非 ASCII 名 slug 为空 → group 前缀
+  let id = base;
+  let n = 2;
+  while (config.groups.some((g) => g.id === id)) {
+    id = `${base}-${n}`;
+    n += 1;
+  }
+  const group: ServerGroup = {
+    id,
+    name: input.name,
+    serverIds,
+    agentTypes,
+    createdAt: now,
+    updatedAt: now,
+  };
+  config.groups.push(group);
+  return group;
+}
+
+export function deleteGroup(config: ManagerConfig, id: string): void {
+  config.groups = config.groups.filter((g) => g.id !== id);
+}
+
+function requireGroup(config: ManagerConfig, groupId: string): ServerGroup {
+  const g = config.groups.find((x) => x.id === groupId);
+  if (!g) throw new Error(`分组不存在: ${groupId}`);
+  return g;
+}
+
+export function groupAddServer(config: ManagerConfig, groupId: string, serverId: string): ServerGroup {
+  if (!config.servers.some((s) => s.id === serverId)) {
+    throw new Error(`server 不存在: ${serverId}`);
+  }
+  const g = requireGroup(config, groupId);
+  if (!g.serverIds.includes(serverId)) g.serverIds.push(serverId);
+  g.updatedAt = new Date().toISOString();
+  return g;
+}
+
+export function groupRemoveServer(config: ManagerConfig, groupId: string, serverId: string): ServerGroup {
+  const g = requireGroup(config, groupId);
+  g.serverIds = g.serverIds.filter((sid) => sid !== serverId);
+  g.updatedAt = new Date().toISOString();
+  return g;
+}
+
+export function groupBindAgent(config: ManagerConfig, groupId: string, agentType: AgentType): ServerGroup {
+  const g = requireGroup(config, groupId);
+  if (!g.agentTypes.includes(agentType)) g.agentTypes.push(agentType);
+  g.updatedAt = new Date().toISOString();
+  return g;
+}
+
+export function groupUnbindAgent(config: ManagerConfig, groupId: string, agentType: AgentType): ServerGroup {
+  const g = requireGroup(config, groupId);
+  g.agentTypes = g.agentTypes.filter((a) => a !== agentType);
+  g.updatedAt = new Date().toISOString();
+  return g;
 }
 
 function cleanUndefined<T extends object>(input: T): Partial<T> {

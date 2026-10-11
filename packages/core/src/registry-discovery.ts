@@ -26,8 +26,10 @@ export interface RegistrySuggestion {
   name: string;
   description: string;
   suggestion: UpsertServerInput | null;
-  /** 结果来源：official=官方 registry；npm=npm 搜索回退 */
-  source?: 'official' | 'npm';
+  /** 结果来源：official=官方 registry；smithery=Smithery；npm=npm 搜索 */
+  source?: 'official' | 'smithery' | 'npm';
+  /** Smithery 等源的热度信号（useCount），用于结果排序展示 */
+  useCount?: number;
 }
 
 export function registryEntryToServerInput(entry: RegistryServerEntry): RegistrySuggestion {
@@ -84,7 +86,12 @@ function shortName(full: string): string {
  * registry.npmjs.org / registry.npmmirror.com 的 -/v1/search 结果 → 建议（npx 型，网关模式）。
  */
 export function npmSearchToSuggestions(
-  data: { objects?: Array<{ package?: { name?: string; description?: string; version?: string } }> },
+  data: {
+    objects?: Array<{
+      package?: { name?: string; description?: string; version?: string };
+      downloads?: { weekly?: number; monthly?: number };
+    }>;
+  },
 ): RegistrySuggestion[] {
   const out: RegistrySuggestion[] = [];
   for (const obj of data.objects ?? []) {
@@ -103,7 +110,91 @@ export function npmSearchToSuggestions(
         gatewayMode: true,
       },
       source: 'npm',
+      useCount: obj.downloads?.weekly,
     });
   }
   return out;
+}
+
+// —— Smithery（registry.smithery.ai，国际第三方大源，免 key 列表查询） ——
+
+export interface SmitherySearchResponse {
+  servers?: Array<{
+    qualifiedName?: string;
+    displayName?: string;
+    slug?: string;
+    description?: string;
+    useCount?: number;
+    remote?: boolean;
+    homepage?: string;
+  }>;
+  pagination?: { currentPage?: number; totalPages?: number; totalCount?: number };
+}
+
+/**
+ * Smithery 列表 → 建议：统一走 Smithery 托管代理端点（streamable-http，网关模式），
+ * 认证需用户自备 smithery API key（写入 headers 占位提示）。
+ */
+export function smitheryToSuggestions(data: SmitherySearchResponse): RegistrySuggestion[] {
+  const out: RegistrySuggestion[] = [];
+  for (const s of data.servers ?? []) {
+    if (s.qualifiedName === undefined) continue;
+    const name = s.displayName?.trim() || s.qualifiedName.split('/').at(-1) || s.qualifiedName;
+    out.push({
+      name,
+      description: s.description?.split('\n')[0] ?? '',
+      useCount: s.useCount,
+      suggestion: {
+        name,
+        transport: 'http',
+        url: `https://server.smithery.ai/@${s.qualifiedName}/mcp`,
+        headers: { Authorization: 'Bearer {smithery_api_key}' },
+        gatewayMode: true,
+      },
+      source: 'smithery',
+    });
+  }
+  return out;
+}
+
+// —— 结果整理：去重 + 相关性过滤（防御上游搜索参数被忽略） ——
+
+/** 按展示名去重（大小写不敏感，保留先出现的——上游排序通常新版本在前） */
+export function dedupeSuggestions(list: RegistrySuggestion[]): RegistrySuggestion[] {
+  const seen = new Set<string>();
+  const out: RegistrySuggestion[] = [];
+  for (const s of list) {
+    const key = s.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * 相关性过滤 + 排序：官方 registry 偶发忽略 search 参数返回无过滤列表，
+ * 这里按关键词 token 过滤（name 命中排前、title/description 命中次之）。
+ */
+export function filterByRelevance(list: RegistrySuggestion[], q: string): RegistrySuggestion[] {
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return list;
+  const scored: Array<{ s: RegistrySuggestion; rank: number }> = [];
+  for (const s of list) {
+    const name = s.name.toLowerCase();
+    const desc = s.description.toLowerCase();
+    let rank: number | null = null;
+    if (tokens.every((t) => name.includes(t))) rank = 0;
+    else if (tokens.every((t) => `${name} ${desc}`.includes(t))) rank = 1;
+    else if (tokens.some((t) => name.includes(t) || desc.includes(t))) rank = 2;
+    if (rank !== null) scored.push({ s, rank });
+  }
+  return scored
+    .sort((a, b) => a.rank - b.rank || (b.s.useCount ?? 0) - (a.s.useCount ?? 0))
+    .map((x) => x.s);
+}
+
+/** 按热度排序（useCount 降序，npm=周下载、smithery=使用次数；无热度数据保持原序） */
+export function sortByPopularity(list: RegistrySuggestion[]): RegistrySuggestion[] {
+  return [...list].sort((a, b) => (b.useCount ?? 0) - (a.useCount ?? 0));
 }

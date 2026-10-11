@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_LIST } from '../src/agents.js';
 import { denormalizeGeminiStyle, normalizeGeminiStyle } from '../src/adapters/json-adapter.js';
 import { decryptSecret, encryptSecret } from '../src/secretbox.js';
-import { npmSearchToSuggestions, registryEntryToServerInput } from '../src/registry-discovery.js';
+import {
+  dedupeSuggestions,
+  filterByRelevance,
+  npmSearchToSuggestions,
+  registryEntryToServerInput,
+  smitheryToSuggestions,
+  sortByPopularity,
+} from '../src/registry-discovery.js';
 
 describe('M3.4 S4 凭证加密', () => {
   it.skipIf(process.platform !== 'win32')('DPAPI 加密→解密往返，密文非明文', async () => {
@@ -102,5 +109,73 @@ describe('M3.6 registry 条目映射（S7）', () => {
       args: ['-y', '@upstash/context7-mcp'],
       gatewayMode: true,
     });
+  });
+
+  it('Smithery 条目映射：displayName 优先、托管代理端点 + Bearer 占位头、网关模式', () => {
+    const suggestions = smitheryToSuggestions({
+      servers: [
+        {
+          qualifiedName: 'upstash/context7-mcp',
+          displayName: 'Context7',
+          description: 'Fetch up-to-date docs.\nSecond line ignored',
+          useCount: 5563,
+        },
+        { description: 'no qualifiedName' },
+      ],
+      pagination: { currentPage: 1, totalPages: 35, totalCount: 105 },
+    });
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({ name: 'Context7', description: 'Fetch up-to-date docs.', source: 'smithery', useCount: 5563 });
+    expect(suggestions[0]!.suggestion).toEqual({
+      name: 'Context7',
+      transport: 'http',
+      url: 'https://server.smithery.ai/@upstash/context7-mcp/mcp',
+      headers: { Authorization: 'Bearer {smithery_api_key}' },
+      gatewayMode: true,
+    });
+  });
+
+  it('去重：同名（大小写不敏感）只保留先出现的', () => {
+    const out = dedupeSuggestions([
+      { name: 'context7', description: 'a', suggestion: null },
+      { name: 'Context7', description: 'b', suggestion: null },
+      { name: 'other', description: 'c', suggestion: null },
+    ]);
+    expect(out.map((s) => s.description)).toEqual(['a', 'c']);
+  });
+
+  it('相关性过滤：官方源忽略 search 参数时丢弃无关条目，名称命中排前', () => {
+    const ranked = filterByRelevance(
+      [
+        { name: 'docs-mcp', description: 'Remote MCP server for Tandem docs', suggestion: null },
+        { name: 'mcp', description: 'Run 150+ AI apps', suggestion: null },
+        { name: 'io.github.upstash/context7', description: 'Up-to-date code docs', suggestion: null },
+        { name: 'some-tool', description: 'Uses context7 under the hood', suggestion: null },
+      ],
+      'context7',
+    );
+    expect(ranked.map((s) => s.name)).toEqual(['io.github.upstash/context7', 'some-tool']);
+  });
+
+  it('相关性过滤：空关键词原样返回', () => {
+    const list = [{ name: 'x', description: 'y', suggestion: null }];
+    expect(filterByRelevance(list, '')).toBe(list);
+  });
+
+  it('热度排序：useCount 降序，无热度数据的沉底但保持原相对顺序', () => {
+    const sorted = sortByPopularity([
+      { name: 'a', description: '', suggestion: null, useCount: 12 },
+      { name: 'b', description: '', suggestion: null },
+      { name: 'c', description: '', suggestion: null, useCount: 838664 },
+      { name: 'd', description: '', suggestion: null, useCount: 12 },
+    ]);
+    expect(sorted.map((s) => s.name)).toEqual(['c', 'a', 'd', 'b']);
+  });
+
+  it('npm 映射带上周下载热度（useCount）', () => {
+    const suggestions = npmSearchToSuggestions({
+      objects: [{ package: { name: 'context7' }, downloads: { weekly: 1276, monthly: 5135 } }],
+    });
+    expect(suggestions[0]!.useCount).toBe(1276);
   });
 });

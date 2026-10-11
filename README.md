@@ -10,15 +10,15 @@
 
 ## ✨ 界面一览
 
-| 概览（Agent 探测 / 运行环境 / 导入） | Server 注册表 |
+| 概览（Agent 探测 / 运行环境 / 导入） | Server 注册表（卡片 + 弹窗编辑） |
 |---|---|
 | ![概览](docs/screenshots/overview.png) | ![注册表](docs/screenshots/servers.png) |
 
-| 分发矩阵（server × agent 勾选即同步） | 网关（聚合端点 / 上游进程） |
+| 分发（分组批量管理 + agent 直连） | 网关（聚合端点 / 上游进程） |
 |---|---|
 | ![分发](docs/screenshots/sync.png) | ![网关](docs/screenshots/gateway.png) |
 
-| Registry 发现（一键添加） | 调用日志 |
+| MCP 发现（进入即浏览 / 搜索 / 翻页） | 调用日志（本机时区） |
 |---|---|
 | ![发现](docs/screenshots/discovery.png) | ![日志](docs/screenshots/logs.png) |
 
