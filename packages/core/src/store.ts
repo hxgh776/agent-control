@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { promises as fs, existsSync, renameSync } from 'node:fs';
+import { promises as fs, existsSync, readdirSync, renameSync, rmdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -135,14 +135,28 @@ export function resolveHomeDir(explicit?: string): string {
   return maybeMigrateHome(path.join(homedir(), '.mcp-manager'), path.join(homedir(), '.agent-control'));
 }
 
-/** 一次性整体迁移：新目录不存在且旧目录存在 → rename；旧目录被占用（旧 daemon 在跑）→ 沿用旧目录 */
+/** 一次性整体迁移：旧目录存在且新目录不存在（或存在但为空，如被空跑创建）→ rename；
+ * 新目录已有内容或旧目录被占用（旧 daemon 在跑）→ 沿用现状，下次启动再迁 */
 export function maybeMigrateHome(legacyDir: string, newDir: string): string {
-  if (!existsSync(newDir) && existsSync(legacyDir)) {
+  if (!existsSync(legacyDir)) return newDir;
+  if (existsSync(newDir)) {
+    let empty = false;
     try {
-      renameSync(legacyDir, newDir);
+      empty = readdirSync(newDir).length === 0;
     } catch {
-      return legacyDir; // 下次启动再迁
+      return newDir;
     }
+    if (!empty) return newDir;
+    try {
+      rmdirSync(newDir);
+    } catch {
+      return newDir;
+    }
+  }
+  try {
+    renameSync(legacyDir, newDir);
+  } catch {
+    return legacyDir; // 下次启动再迁
   }
   return newDir;
 }

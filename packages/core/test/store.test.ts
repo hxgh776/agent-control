@@ -169,6 +169,14 @@ describe('maybeMigrateHome（数据目录迁移）', () => {
       await fs.mkdir(occupied);
       await fs.writeFile(path.join(occupied, 'config.json'), '{"v":1}', 'utf8');
       expect(maybeMigrateHome(legacy, occupied)).toBe(occupied);
+      // 新目录存在但为空（被空跑创建）→ 让位迁移
+      const legacy2 = path.join(base, 'legacy-2');
+      const emptyNew = path.join(base, 'empty-new');
+      await fs.mkdir(legacy2);
+      await fs.writeFile(path.join(legacy2, 'config.json'), '{"marker":2}', 'utf8');
+      await fs.mkdir(emptyNew);
+      expect(maybeMigrateHome(legacy2, emptyNew)).toBe(emptyNew);
+      expect(JSON.parse(await fs.readFile(path.join(emptyNew, 'config.json'), 'utf8'))).toEqual({ marker: 2 });
     } finally {
       await fs.rm(base, { recursive: true, force: true });
     }
