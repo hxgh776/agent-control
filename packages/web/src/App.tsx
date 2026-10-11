@@ -102,7 +102,7 @@ export default function App() {
             A
           </div>
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold text-white">AgentControl</div>
+            <div className="text-[15px] font-semibold text-white">Agent Control</div>
             <div className="mt-0.5 text-xs tabular-nums text-slate-500">
               v{status.data?.version} · 端口 {status.data?.port}
             </div>
@@ -183,7 +183,7 @@ function TokenGate({ onOk }: { onOk: () => void }) {
             A
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-slate-900">AgentControl</h1>
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">Agent Control</h1>
             <p className="text-xs text-slate-400">本机守护进程访问</p>
           </div>
         </div>

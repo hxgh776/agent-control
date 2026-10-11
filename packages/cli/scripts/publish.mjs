@@ -31,13 +31,12 @@ await fs.writeFile(path.join(tmp, 'package.json'), JSON.stringify(publishManifes
 
 await fs.cp(path.resolve(cliDir, 'dist'), path.join(tmp, 'dist'), { recursive: true });
 for (const f of ['README.md', 'LICENSE']) {
-  const src = path.resolve(cliDir, f);
-  try {
-    await fs.cp(src, path.join(tmp, f));
-  } catch {
-    if (f === 'LICENSE') await fs.cp(path.resolve(cliDir, '../../LICENSE'), path.join(tmp, f));
-  }
+  await fs.cp(path.resolve(cliDir, '../..', f), path.join(tmp, f));
 }
 
-execSync(`npm publish "${tmp}" --access public`, { stdio: 'inherit', cwd: cliDir });
+// 发布必须直连官方源：本机全局 registry 常配成 npmmirror 镜像，镜像不接受发布
+execSync(`npm publish "${tmp}" --access public --registry=https://registry.npmjs.org`, {
+  stdio: 'inherit',
+  cwd: cliDir,
+});
 await fs.rm(tmp, { recursive: true, force: true });

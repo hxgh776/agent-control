@@ -1,11 +1,11 @@
 {
-  "name": "agentcontrol",
-  "version": "0.1.0",
-  "description": "AgentControl (actl) — local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
+  "name": "@hxgh776/agent-control",
+  "version": "0.1.2",
+  "description": "Agent Control (actl) \u2014 local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
   "type": "module",
   "bin": {
-    "agentcontrol": "dist/index.js",
-    "actl": "dist/index.js"
+    "actl": "dist/index.js",
+    "agent-control": "dist/index.js"
   },
   "files": [
     "dist"

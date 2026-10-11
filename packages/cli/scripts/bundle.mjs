@@ -10,6 +10,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const cliDir = path.resolve(here, '..');
 const webDist = path.resolve(cliDir, '..', 'web', 'dist');
 
+// esbuild 不清空输出目录，先清掉旧 chunk 防止陈旧产物进发布包
+await fs.rm(path.resolve(cliDir, 'dist'), { recursive: true, force: true });
+
 const common = {
   bundle: true,
   platform: 'node',

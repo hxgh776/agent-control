@@ -1,10 +1,10 @@
-# AgentControl
+# Agent Control
 
 [![CI](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-**AgentControl**（命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。未来同一套底座还将管理 **Skill** 与**供应商切换**。
+**Agent Control**（npm 包 [`@hxgh776/agent-control`](https://www.npmjs.com/package/@hxgh776/agent-control)，命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。未来同一套底座还将管理 **Skill** 与**供应商切换**。
 
 > Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。独立实现，与 cc-switch 无关联。
 
@@ -48,7 +48,7 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 ## 🚀 快速开始
 
 ```bash
-npm install -g agentcontrol   # 即将发布；当前从源码安装见下方「开发」
+npm install -g @hxgh776/agent-control
 actl start                    # daemon 后台常驻
 #   API/UI: http://127.0.0.1:6280
 #   MCP   : http://127.0.0.1:6280/mcp
@@ -73,7 +73,7 @@ actl gateway status | start | stop
 actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端点）
 ```
 
-> `agentcontrol` 是同一命令的全名（`agentcontrol start` = `actl start`）。
+> `agent-control` 是同一命令的全名（`agent-control start` = `actl start`）。
 
 ## 🤖 支持的 Agent
 
@@ -109,7 +109,7 @@ actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端
 
 ```bash
 pnpm install
-pnpm build        # 构建 core / server / web / agentcontrol（cli，含 esbuild 单包）
+pnpm build        # 构建 core / server / web / @hxgh776/agent-control（cli，含 esbuild 单包）
 pnpm test         # 80 个单元 + 集成测试（含真实子进程网关全链路）
 pnpm lint
 cd e2e && pnpm i && npx playwright install chromium && pnpm test
@@ -119,7 +119,7 @@ cd e2e && pnpm i && npx playwright install chromium && pnpm test
 
 ## 🗺 Roadmap
 
-- [x] ~~发布到 npm~~（`npm i -g agentcontrol`）
+- [x] ~~发布到 npm~~（`npm i -g @hxgh776/agent-control`）
 - [ ] Skill 管理（对齐 Agent Skills 规范 + skills.sh 源）
 - [ ] 供应商切换（Claude Code / Codex / Gemini）
 - [ ] 项目级作用域（per-project 分发）
