@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { promises as fs } from 'node:fs';
 import { Daemon, DAEMON_VERSION } from './daemon.js';
 
@@ -36,7 +35,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  console.log(`mcp-manager daemon v${DAEMON_VERSION}`);
+  console.log(`agentcontrol daemon v${DAEMON_VERSION}`);
   console.log(`  API/UI : ${daemon.baseUrl}`);
   console.log(`  MCP    : ${daemon.baseUrl}/mcp (gateway 启动后可用)`);
   console.log(`  home   : ${daemon.store.homeDir}`);

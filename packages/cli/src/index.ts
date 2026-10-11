@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { Command } from 'commander';
 import { Store } from '@mcp-manager/core';
 import { runBridgeStdio } from '@mcp-manager/server/gateway/bridge';
@@ -12,7 +11,7 @@ import {
 } from '@mcp-manager/server/process';
 
 const program = new Command();
-program.name('mcpmgr').description('MCP Manager——本地 MCP 控制平面').version('0.1.0');
+program.name('actl').description('AgentControl——本地 Agent 能力总控台').version('0.1.0');
 
 let homeOverride: string | undefined;
 program
@@ -44,7 +43,7 @@ async function api<T>(
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
-    throw new Error(`daemon 未运行（${base}），请先执行 mcpmgr start`);
+    throw new Error(`daemon 未运行（${base}），请先执行 actl start`);
   }
   const data = (await res.json()) as T;
   return { status: res.status, data };
@@ -124,7 +123,7 @@ servers
   .action(async () => {
     const { data } = await api<{ servers: Array<Record<string, unknown>> }>('GET', '/api/servers');
     if (data.servers.length === 0) {
-      console.log('（空）先用 mcpmgr import 或 servers add 添加');
+      console.log('（空）先用 actl import 或 servers add 添加');
       return;
     }
     for (const s of data.servers) {
@@ -195,7 +194,7 @@ program
     }
     if (!opts.all) {
       // 未指定 --all 时仅预览
-      console.log('\n（预览模式，执行 mcpmgr import --all 以导入）');
+      console.log('\n（预览模式，执行 actl import --all 以导入）');
       return;
     }
     const { data: added } = await api<{ added: Array<{ id: string }> }>('POST', '/api/import', {
@@ -244,7 +243,7 @@ program
       if (idx > 0) headers[kv.slice(0, idx)] = kv.slice(idx + 1);
     }
     if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
-    console.error(`[mcpmgr bridge] → ${url}`);
+    console.error(`[actl bridge] → ${url}`);
     await runBridgeStdio({
       url,
       ...(Object.keys(headers).length > 0 ? { headers } : {}),

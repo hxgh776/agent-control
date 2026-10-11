@@ -84,7 +84,7 @@ export default function App() {
           <Icon name="alert" className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
             无法连接 daemon（{String((status.error as Error).message)}）。请确认已运行{' '}
-            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-xs">mcpmgr start</code>。
+            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-xs">actl start</code>。
           </div>
         </div>
       </div>
@@ -99,10 +99,10 @@ export default function App() {
       <aside className="flex w-56 shrink-0 flex-col bg-slate-950">
         <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/[0.06] px-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-sm font-bold text-white shadow-lg shadow-brand-500/30">
-            M
+            A
           </div>
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold text-white">MCP Manager</div>
+            <div className="text-[15px] font-semibold text-white">AgentControl</div>
             <div className="mt-0.5 text-xs tabular-nums text-slate-500">
               v{status.data?.version} · 端口 {status.data?.port}
             </div>
@@ -180,16 +180,16 @@ function TokenGate({ onOk }: { onOk: () => void }) {
       <div className="w-96 animate-scale-in rounded-2xl bg-white p-8 shadow-pop">
         <div className="mb-6 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-base font-bold text-white shadow-lg shadow-brand-500/30">
-            M
+            A
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-slate-900">MCP Manager</h1>
+            <h1 className="text-lg font-semibold tracking-tight text-slate-900">AgentControl</h1>
             <p className="text-xs text-slate-400">本机守护进程访问</p>
           </div>
         </div>
         <p className="mb-4 text-xs leading-relaxed text-slate-500">
           输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.mcp-manager/config.json</code>{' '}
-          的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">mcpmgr status</code>）
+          的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">actl status</code>）
         </p>
         <input
           data-testid="token-input"

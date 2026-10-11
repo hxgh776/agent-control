@@ -1,16 +1,18 @@
 {
-  "name": "mcp-manager",
+  "name": "agentcontrol",
   "version": "0.1.0",
-  "description": "Local MCP control plane: configure once, enable across coding agents; aggregate & proxy MCP servers.",
+  "description": "AgentControl (actl) — local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
   "type": "module",
   "bin": {
-    "mcpmgr": "dist/index.js"
+    "agentcontrol": "dist/index.js",
+    "actl": "dist/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && node scripts/bundle.mjs",
+    "release": "node scripts/publish.mjs"
   },
   "dependencies": {
     "@mcp-manager/core": "workspace:*",
@@ -19,5 +21,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
   }
 }

@@ -2,10 +2,16 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { readTextIfExists } from '@mcp-manager/core';
 
-/** 解析 daemon 入口（@mcp-manager/server 包的 dist/index.js） */
+/** 解析 daemon 入口：
+ *  - npm 安装态：与 CLI 同目录的 bundle（dist/daemon.js，esbuild 双入口产物）
+ *  - workspace 开发态：@mcp-manager/server 包的 dist/index.js
+ */
 export function resolveDaemonEntry(): string {
+  const bundled = path.resolve(import.meta.dirname, 'daemon.js');
+  if (existsSync(bundled)) return bundled;
   const require = createRequire(import.meta.url);
   return require.resolve('@mcp-manager/server');
 }

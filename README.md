@@ -1,26 +1,28 @@
-# MCP Manager
+# AgentControl
 
 [![CI](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-面向开发者个人电脑的 **MCP 控制平面**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。
+**AgentControl**（命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。未来同一套底座还将管理 **Skill** 与**供应商切换**。
+
+> Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。独立实现，与 cc-switch 无关联。
 
 支持 **8 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI
 
 ## ✨ 界面一览
 
-| 概览（Agent 探测 / 运行环境 / 导入） | Server 注册表（卡片 + 弹窗编辑） |
+| 概览（Agent 探测 / 运行环境 / 导入） | MCP 管理（卡片 + 弹窗编辑） |
 |---|---|
-| ![概览](docs/screenshots/overview.png) | ![注册表](docs/screenshots/servers.png) |
+| ![概览](docs/screenshots/overview.png) | ![MCP 管理](docs/screenshots/servers.png) |
 
-| 分发（分组批量管理 + agent 直连） | 网关（聚合端点 / 上游进程） |
+| Agent 分发（分组批量管理 + 直连） | 聚合网关（聚合端点 / 上游进程） |
 |---|---|
-| ![分发](docs/screenshots/sync.png) | ![网关](docs/screenshots/gateway.png) |
+| ![Agent 分发](docs/screenshots/sync.png) | ![聚合网关](docs/screenshots/gateway.png) |
 
-| MCP 发现（进入即浏览 / 搜索 / 翻页） | 调用日志（本机时区） |
+| MCP 发现（官方 / Smithery / npm 三源，热度排序） | 调用日志（本机时区） |
 |---|---|
-| ![发现](docs/screenshots/discovery.png) | ![日志](docs/screenshots/logs.png) |
+| ![MCP 发现](docs/screenshots/discovery.png) | ![调用日志](docs/screenshots/logs.png) |
 
 ## 🤔 为什么需要它
 
@@ -31,7 +33,7 @@
 - **工具一多上下文爆炸**，却只能整体开关，没法精细控制每个 agent 看到哪些工具；
 - **出了问题无从排查**——stdio 进程日志散落在各 agent 的缓存目录里。
 
-MCP Manager 把所有 MCP Server 收进**单一注册表**，然后二选一（可混搭）地分发：
+AgentControl 把所有 MCP Server 收进**单一注册表**，然后二选一（可混搭）地分发：
 
 | | 直连模式 | 网关模式 |
 |---|---|---|
@@ -45,41 +47,33 @@ Codex 这类只支持 stdio 的 agent 也没问题——内置 **stdio 反向桥
 
 ## 🚀 快速开始
 
-**前置要求**：Node.js ≥ 20（`npx`/`uvx`/`docker` 按需）、pnpm ≥ 9。
-
 ```bash
-# 1. 获取并构建
-git clone https://github.com/hxgh776/mcp-manager.git
-cd mcp-manager
-pnpm install && pnpm build
-
-# 2. 启动 daemon（后台常驻）
-node packages/cli/dist/index.js start
+npm install -g agentcontrol   # 即将发布；当前从源码安装见下方「开发」
+actl start                    # daemon 后台常驻
 #   API/UI: http://127.0.0.1:6280
 #   MCP   : http://127.0.0.1:6280/mcp
-
-# 3. 打开管理界面
-#    浏览器访问 http://127.0.0.1:6280 —— 默认无需令牌
 ```
 
 **5 分钟上手路径**：
 
 1. 打开「概览」页 → 自动探测本机 agent，并把现有 MCP 配置**导入**注册表；
-2. 「发现」页搜索（如 `context7`）→ 一键以网关模式添加；
-3. 「分发」页勾选要启用它的 agent → **同步**；
+2. 「MCP 发现」页搜索（如 `context7`）→ 一键以网关模式添加；
+3. 「Agent 分发」页勾选要启用它的 agent → **同步**；
 4. 完成。此后改配置/换密钥/开关工具都只在这一处，同步一下全局生效。
 
 ## 🖥 CLI
 
 ```bash
-mcpmgr start | stop | status
-mcpmgr servers list | servers add --name X --transport stdio --command npx --args ...
-mcpmgr agents            # 探测本机 agent
-mcpmgr import [--all]    # 从现有 agent 配置导入
-mcpmgr sync [--dry-run]  # 分发到各 agent
-mcpmgr gateway status | start | stop
-mcpmgr bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端点）
+actl start | stop | status
+actl servers list | servers add --name X --transport stdio --command npx --args ...
+actl agents            # 探测本机 agent
+actl import [--all]    # 从现有 agent 配置导入
+actl sync [--dry-run]  # 分发到各 agent
+actl gateway status | start | stop
+actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端点）
 ```
+
+> `agentcontrol` 是同一命令的全名（`agentcontrol start` = `actl start`）。
 
 ## 🤖 支持的 Agent
 
@@ -100,6 +94,7 @@ mcpmgr bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程�
 
 - **配置分发**：注册表为单一事实来源，勾选矩阵分发，支持冲突检测与 dry-run 预览；
 - **MCP 网关**：多上游聚合成一个 streamable HTTP 端点；工具级开关、重名自动加前缀；上游懒启动、崩溃自愈（指数退避）；per-agent 分组端点让每个 agent 只看到自己的工具子集；
+- **MCP 发现**：官方 Registry / Smithery / npm 三源聚合，搜索按热度排序（npm 周下载量、Smithery 使用次数），相关性过滤 + 按名去重；
 - **协议桥接**：stdio ↔ streamable HTTP / SSE 双向兼容，老协议 server 和老协议 agent 都能接入；
 - **服务管理**：进程启停/重启、stderr 日志、调用日志（含耗时与错误）、工具调试台（不经 agent 直接调用）；
 - **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
@@ -114,8 +109,8 @@ mcpmgr bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程�
 
 ```bash
 pnpm install
-pnpm build        # 构建 core / server / cli / web
-pnpm test         # 67 个单元 + 集成测试（含真实子进程网关全链路）
+pnpm build        # 构建 core / server / web / agentcontrol（cli，含 esbuild 单包）
+pnpm test         # 80 个单元 + 集成测试（含真实子进程网关全链路）
 pnpm lint
 cd e2e && pnpm i && npx playwright install chromium && pnpm test
 ```
@@ -124,10 +119,12 @@ cd e2e && pnpm i && npx playwright install chromium && pnpm test
 
 ## 🗺 Roadmap
 
+- [x] ~~发布到 npm~~（`npm i -g agentcontrol`）
+- [ ] Skill 管理（对齐 Agent Skills 规范 + skills.sh 源）
+- [ ] 供应商切换（Claude Code / Codex / Gemini）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密
-- [ ] 发布到 npm（`npx mcp-manager` 直接使用）
 
 ## 📄 License
 

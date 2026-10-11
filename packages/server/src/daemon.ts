@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -264,6 +264,12 @@ function actualPortOf(server: http.Server): number {
 }
 
 function resolveDefaultWebDist(): string | null {
-  // 运行时位于 <repo>/packages/server/dist/daemon.js → <repo>/packages/web/dist
-  return path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
+  // npm 安装态：bundle 同目录的 web/（esbuild 打包时内嵌）；workspace 态：<repo>/packages/web/dist
+  for (const candidate of [
+    path.resolve(import.meta.dirname, 'web'),
+    path.resolve(import.meta.dirname, '..', '..', 'web', 'dist'),
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
 }
