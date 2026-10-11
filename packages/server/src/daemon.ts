@@ -9,7 +9,7 @@ import {
   detectAgents,
   makeAgents,
 } from '@agent-control/core';
-import { SkillsService } from '@agent-control/core';
+import { ProvidersService, SkillsService } from '@agent-control/core';
 import type { AgentDetection, ManagerConfig } from '@agent-control/core';
 import { Logger } from './logger.js';
 import type { LogLevel } from './logger.js';
@@ -58,6 +58,7 @@ export class Daemon {
   readonly logger: Logger;
   readonly sync: SyncEngine;
   readonly skills: SkillsService;
+  readonly providers: ProvidersService;
   readonly gateway: Gateway;
   config!: ManagerConfig;
   readonly router = new Router();
@@ -96,6 +97,12 @@ export class Daemon {
       ...(agentRoot ? { agents: makeAgents(agentRoot) } : {}),
     });
     this.skills = new SkillsService({
+      store: this.store,
+      getConfig: () => this.config,
+      saveConfig: () => this.saveConfig(),
+      ...(agentRoot ? { agentRoot } : {}),
+    });
+    this.providers = new ProvidersService({
       store: this.store,
       getConfig: () => this.config,
       saveConfig: () => this.saveConfig(),

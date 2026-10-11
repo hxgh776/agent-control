@@ -217,3 +217,26 @@ export interface SkillUpdateReport {
   failures: Array<{ repo: string; reason: string }>;
   checkedAt: string;
 }
+
+// —— 供应商切换（S1） ——
+
+export type ProviderApp = 'claude-code' | 'codex' | 'gemini-cli';
+
+export interface ProviderProfileDTO {
+  id: string;
+  app: ProviderApp;
+  name: string;
+  category?: string;
+  websiteUrl?: string;
+  fromPreset?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastSwitchedAt?: string;
+}
+
+export interface ProviderPresetDTO {
+  name: string;
+  category?: string;
+  websiteUrl?: string;
+  isOfficial: boolean;
+}

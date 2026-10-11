@@ -300,7 +300,7 @@ function makeZip(files: Array<{ name: string; content: string }>): Buffer {
 function stubGithub(archiveUrl: string, zip: Buffer): void {
   const real = globalThis.fetch;
   const repoPrefix = archiveUrl.replace(/\/archive\/refs\/heads\/.*$/, '');
-  vi.stubGlobal('fetch', (async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', (async (input: Parameters<typeof fetch>[0]) => {
     const url = String(input);
     if (url.includes(`${repoPrefix}/archive/refs/heads/`)) {
       return new Response(new Uint8Array(zip), { status: 200 });

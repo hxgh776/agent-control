@@ -101,7 +101,7 @@ describe('skills API (A-SK)', () => {
     const real = globalThis.fetch;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const url = String(input);
         if (url.includes('skills.sh/api/search')) {
           return new Response(
@@ -121,7 +121,7 @@ describe('skills API (A-SK)', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const url = String(input);
         if (url.includes('skills.sh/api/search')) return new Response('boom', { status: 500 });
         return real(input, init);

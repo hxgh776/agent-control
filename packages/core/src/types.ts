@@ -93,6 +93,8 @@ export interface ManagerConfig {
   groups: ServerGroup[];
   skills: import('./skills/types.js').InstalledSkill[];
   skillTargets: import('./skills/types.js').SkillTarget[];
+  providers: import('./providers/types.js').ProviderProfile[];
+  providerCurrent: Partial<Record<import('./providers/types.js').ProviderApp, string>>;
   syncState: Partial<Record<AgentType, AgentSyncState>>;
   settings: Settings;
 }
