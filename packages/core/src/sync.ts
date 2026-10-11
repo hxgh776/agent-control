@@ -1,6 +1,7 @@
 import { AGENT_LIST } from './agents.js';
 import { backupFile } from './backup.js';
 import { decryptRecord } from './secretbox.js';
+import { firstWriteBackup, PublicationJournal } from './write-engine.js';
 import type { AgentAdapter, ConflictInfo, ConflictResolution, FragmentWrite, RawServerEntry } from './adapters/types.js';
 import { boundServers } from './registry.js';
 import { AGENTS } from './agents.js';
@@ -20,12 +21,15 @@ import { promises as fs } from 'node:fs';
  * - gatewayMode server → http 能力 agent 写公共 GATEWAY_KEY 指向网关；
  * - 不支持 http 的 agent（如 Codex）→ G7 stdio 反向桥命令（桥 URL + token/headers）；
  * - 不再受管的片段（解绑/删除/直连转网关）按 syncState 收敛移除；
- * - 无桥可用且传输不支持 → 记入 unsupported 并跳过。
+ * - 无桥可用且传输不支持 → 记入 unsupported 并跳过；
+ * - S0：homeDir 提供时启用发布日志（写前意图）与首写字节备份。
  */
 export class SyncEngine {
   constructor(
     private readonly opts: {
       backupsDir?: string;
+      /** S0：数据目录——提供后启用 pending-publication 发布日志 */
+      homeDir?: string;
       agents?: Record<AgentType, { adapter: AgentAdapter }>;
       /** G7 stdio 反向桥：command + 固定前缀参数（bridge-main.js 路径），daemon 按自身安装路径注入 */
       stdioBridge?: { command: string; baseArgs: string[] };
@@ -35,11 +39,13 @@ export class SyncEngine {
   async sync(config: ManagerConfig, input: { dryRun?: boolean; resolutions?: Record<string, ConflictResolution> } = {}): Promise<SyncReport> {
     const report: SyncReport = { perAgent: [] };
     const agents = this.opts.agents ?? AGENTS;
+    // S0：一次 sync 全程共用一份发布日志；没有 homeDir（部分测试）则不启用
+    const journal = this.opts.homeDir ? new PublicationJournal(this.opts.homeDir) : undefined;
     let gatewayEntryWritten = false;
     for (const def of AGENT_LIST) {
       const adapter = agents[def.type]?.adapter;
       if (!adapter) continue;
-      const agentReport = await this.syncAgent(def.type, adapter, config, input);
+      const agentReport = await this.syncAgent(def.type, adapter, config, input, journal);
       if (agentReport.changes.some((c) => c.key === GATEWAY_KEY && c.action === 'upsert')) {
         gatewayEntryWritten = true;
       }
@@ -78,6 +84,7 @@ export class SyncEngine {
     adapter: AgentAdapter,
     config: ManagerConfig,
     input: { dryRun?: boolean; resolutions?: Record<string, ConflictResolution> },
+    journal?: PublicationJournal,
   ): Promise<AgentSyncReport> {
     const dryRun = input.dryRun ?? false;
     const resolutions = mapResolutions(agentType, input.resolutions);
@@ -174,7 +181,11 @@ export class SyncEngine {
     const backup = dryRun
       ? undefined
       : async (): Promise<void> => {
-          if (this.opts.backupsDir) await backupFile(file, agentType, this.opts.backupsDir);
+          if (this.opts.backupsDir) {
+            await backupFile(file, agentType, this.opts.backupsDir);
+            // S0：首次写入前的字节级原始备份（每文件只做一次）
+            await firstWriteBackup(file, this.opts.backupsDir);
+          }
         };
 
     const result = await adapter.apply(file, writes, {
@@ -182,6 +193,7 @@ export class SyncEngine {
       resolutions,
       dryRun,
       backup,
+      ...(journal ? { journal } : {}),
     });
 
     if (!dryRun) {

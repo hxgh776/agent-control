@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   Store,
   SyncEngine,
+  recoverPendingPublications,
   detectAgents,
   makeAgents,
 } from '@agent-control/core';
@@ -87,6 +88,7 @@ export class Daemon {
       opts.agentConfigRoot ?? process.env['AGENT_CONTROL_AGENT_HOME'] ?? process.env['MCP_MANAGER_AGENT_HOME'];
     this.sync = new SyncEngine({
       backupsDir: this.store.backupsDir,
+      homeDir: this.store.homeDir,
       // G7：stdio 反向桥脚本与本 daemon 同目录（dist/bridge-main.js）
       stdioBridge: { command: 'node', baseArgs: [path.join(import.meta.dirname, 'bridge-main.js')] },
       ...(agentRoot ? { agents: makeAgents(agentRoot) } : {}),
@@ -137,6 +139,14 @@ export class Daemon {
     if (this.opts.port === undefined && this._actualPort !== this.config.settings.port) {
       this.config.settings.port = this._actualPort;
       await this.saveConfig();
+    }
+
+    // S0：崩溃前滚——判定上次未清账的发布意图（只上报，不改文件内容）
+    const recovered = await recoverPendingPublications(this.store.homeDir);
+    if (recovered) {
+      for (const r of recovered) {
+        this.logger.warn(`上次发布未正常收账: ${r.path} → ${r.state}`);
+      }
     }
 
     // 网关钩子常驻挂载；运行时开关见 /api/gateway/start|stop

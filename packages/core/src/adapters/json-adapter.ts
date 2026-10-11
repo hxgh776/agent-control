@@ -125,6 +125,8 @@ export class JsonAgentAdapter implements AgentAdapter {
     }
 
     const newText = `${JSON.stringify(record, null, 2)}\n`;
+    // S0：发布前落意图，发布/回滚后清账
+    if (options.journal) await options.journal.record(file, text, newText);
     await atomicWriteFile(file, newText);
 
     // 复读校验：整体内容一致 + 非管辖顶层键与写前逐键深等
@@ -149,8 +151,10 @@ export class JsonAgentAdapter implements AgentAdapter {
     if (!verified) {
       if (text === null) await fs.rm(file, { force: true });
       else await atomicWriteFile(file, text);
+      if (options.journal) await options.journal.complete(file); // 已回滚到写前状态，意图清账
       throw new WriteVerificationError(file);
     }
+    if (options.journal) await options.journal.complete(file);
 
     return {
       changes,

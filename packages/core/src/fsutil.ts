@@ -11,10 +11,31 @@ export async function atomicWriteFile(filePath: string, data: string): Promise<v
   const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
   try {
     await fs.writeFile(tmp, data, 'utf8');
+    // S0 持久化 stage：rename 前 fsync 临时文件，掉电后意图恢复才成立
+    // （Windows 的 FlushFileBuffers 要求句柄带写权限，'r' 会 EPERM，必须 'r+'）
+    const fh = await fs.open(tmp, 'r+');
+    try {
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
     let lastError: unknown;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         await fs.rename(tmp, filePath);
+        // POSIX 上再 fsync 目录使 rename 本身持久化；Windows 不支持打开目录，跳过
+        if (process.platform !== 'win32') {
+          try {
+            const dh = await fs.open(dir, 'r');
+            try {
+              await dh.sync();
+            } finally {
+              await dh.close();
+            }
+          } catch {
+            // 目录 fsync 失败不影响写入正确性
+          }
+        }
         return;
       } catch (err) {
         lastError = err;

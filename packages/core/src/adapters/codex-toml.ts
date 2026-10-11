@@ -109,6 +109,8 @@ export class CodexTomlAdapter implements AgentAdapter {
         tomlStringify({ mcp_servers: { [p.key]: p.desired as Record<string, unknown> } }).trimEnd(),
       );
     const newText = appendSections(rest, appended);
+    // S0：发布前落意图，发布/回滚后清账
+    if (options.journal) await options.journal.record(file, text === null ? null : text, newText);
     await atomicWriteFile(file, newText);
 
     // 校验：非托管区字节级一致 + 管辖键解析结果与目标一致
@@ -139,8 +141,10 @@ export class CodexTomlAdapter implements AgentAdapter {
     if (!verified) {
       if (text === null) await fs.rm(file, { force: true });
       else await atomicWriteFile(file, text);
+      if (options.journal) await options.journal.complete(file); // 已回滚到写前状态，意图清账
       throw new WriteVerificationError(file);
     }
+    if (options.journal) await options.journal.complete(file);
 
     const finalParsed = this.parseOrThrow(reread ?? '', file);
     const finalServers = isStringKeyedRecord(finalParsed['mcp_servers'])

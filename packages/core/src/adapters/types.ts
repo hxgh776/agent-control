@@ -39,6 +39,11 @@ export interface ApplyOptions {
   dryRun?: boolean;
   /** 首次实际变更前调用一次（同步引擎在此挂滚动备份） */
   backup?: () => Promise<void>;
+  /** S0 发布日志：rename 前记 pre/planned 意图，成功后清账；崩溃后 daemon 启动时前滚判定 */
+  journal?: {
+    record(filePath: string, preText: string | null, plannedText: string): Promise<void>;
+    complete(filePath: string): Promise<void>;
+  };
 }
 
 export interface ApplyResult {

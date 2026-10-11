@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './errors.js';
 export * from './fsutil.js';
 export * from './backup.js';
+export * from './write-engine.js';
 export * from './store.js';
 export * from './adapters/types.js';
 export * from './adapters/shared.js';
