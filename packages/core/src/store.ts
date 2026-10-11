@@ -132,16 +132,19 @@ export function resolveHomeDir(explicit?: string): string {
   if (explicit) return explicit;
   const env = process.env['AGENT_CONTROL_HOME'] ?? process.env['MCP_MANAGER_HOME'];
   if (env) return env;
-  const legacy = path.join(homedir(), '.mcp-manager');
-  const home = path.join(homedir(), '.agent-control');
-  if (!existsSync(home) && existsSync(legacy)) {
+  return maybeMigrateHome(path.join(homedir(), '.mcp-manager'), path.join(homedir(), '.agent-control'));
+}
+
+/** 一次性整体迁移：新目录不存在且旧目录存在 → rename；旧目录被占用（旧 daemon 在跑）→ 沿用旧目录 */
+export function maybeMigrateHome(legacyDir: string, newDir: string): string {
+  if (!existsSync(newDir) && existsSync(legacyDir)) {
     try {
-      renameSync(legacy, home);
+      renameSync(legacyDir, newDir);
     } catch {
-      return legacy; // 旧目录被占用（如旧 daemon 仍在运行）：沿用旧目录，下次启动再迁
+      return legacyDir; // 下次启动再迁
     }
   }
-  return home;
+  return newDir;
 }
 
 export class Store {

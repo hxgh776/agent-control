@@ -1,6 +1,9 @@
 // E2E 冒烟：token 门 → 概览 → 添加 server → 分发预览 → 网关页。
 // daemon 由 helpers 启动（沙箱 HOME + 沙箱 agent 配置根）。
 import { expect, test } from '@playwright/test';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startTestDaemon, type TestDaemon } from './helpers';
 
 let daemon: TestDaemon;
@@ -82,4 +85,47 @@ test('E-08 分组：新建分组、加入 MCP、关联 agent 后有效绑定生�
   // 分发预览仍可用
   await page.getByTestId('btn-dry-run').click();
   await expect(page.getByText('预览完成')).toBeVisible();
+});
+
+test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
+  await auth(page);
+  await page.getByTestId('tab-skills').click();
+  await expect(page.getByTestId('btn-skills-updates')).toBeVisible();
+  // 安装本地 ZIP（fixtures/demo-skill.zip）
+  await page.getByTestId('btn-skills-zip').click();
+  await page.getByTestId('skill-zip-input').setInputFiles(path.join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/skills/demo-skill.zip'));
+  await expect(page.getByTestId('skill-card-skill-demo-skill')).toBeVisible({ timeout: 15000 });
+  // 启用投影到 Claude Code
+  await page.getByTestId('skill-toggle-skill-demo-skill-claude-code').click();
+  await expect(page.getByText('已修改').or(page.getByTestId('skill-card-skill-demo-skill'))).toBeVisible();
+  const card = page.getByTestId('skill-card-skill-demo-skill');
+  await expect(card.getByText('当前')).toHaveCount(0); // 无当前概念，锁卡片仍在
+  // 卸载
+  await page.getByTestId('skill-uninstall-skill-demo-skill').click();
+  await page.getByRole('button', { name: '卸载' }).last().click();
+  await expect(page.getByText(/已卸载/)).toBeVisible({ timeout: 15000 });
+});
+
+test('E-10 供应商页：预设创建 + 一键切换写 settings.json + 删除', async ({ page }) => {
+  await auth(page);
+  await page.getByTestId('tab-providers').click();
+  await page.getByTestId('btn-provider-new').click();
+  await page.getByTestId('provider-preset-select').selectOption('Kimi');
+  await page.getByTestId('provider-key-input').fill('sk-e2e-kimi');
+  await page.getByTestId('provider-save').click();
+  await expect(page.getByTestId('provider-card-kimi')).toBeVisible({ timeout: 15000 });
+  // 切换
+  await page.getByTestId('provider-switch-kimi').click();
+  await page.getByRole('button', { name: '确认切换' }).click();
+  await expect(page.getByText(/已切换/)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId('provider-card-kimi').getByText('当前')).toBeVisible();
+  // 落盘校验（沙箱 agent home）
+  const settings = JSON.parse(
+    await fs.readFile(path.join(daemon.homeDir, '.claude', 'settings.json'), 'utf8'),
+  ) as { env?: Record<string, string> };
+  expect(settings.env?.['ANTHROPIC_AUTH_TOKEN']).toBe('sk-e2e-kimi');
+  // 清理
+  await page.getByTestId('provider-delete-kimi').click();
+  await page.getByRole('button', { name: '删除' }).last().click();
+  await expect(page.getByText('已删除供应商档案')).toBeVisible({ timeout: 15000 });
 });

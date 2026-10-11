@@ -23,6 +23,9 @@ const common = {
   logLevel: 'info',
   // 只外置 Node 内建模块；@agent-control/* 与其余依赖全部内联
   external: ['node:*'],
+  // 工作区包映射到源码（tsconfig.bundle.json 的 paths）——内联 dist 产物会自带
+  // `import { createRequire } from "node:module"`，与 banner 注入的绑定重复声明
+  tsconfig: path.resolve(cliDir, 'tsconfig.bundle.json'),
 };
 
 await build({
@@ -33,9 +36,11 @@ await build({
   ],
   outdir: path.resolve(cliDir, 'dist'),
   // 源入口不带 shebang；由 banner 统一提供，并注入 createRequire shim
-  // （CJS 依赖如 cross-spawn 在 ESM 输出里做动态 require，需要真 require 兜底）
+  // （CJS 依赖如 cross-spawn 在 ESM 输出里做动态 require，需要真 require 兜底）。
+  // 绑定名用 __createRequire：源码（process.ts 等）也会 import { createRequire }，
+  // 同名会触发 ESM 重复声明 SyntaxError。
   banner: {
-    js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);",
+    js: "#!/usr/bin/env node\nimport { createRequire as __createRequire } from 'node:module';\nconst require = __createRequire(import.meta.url);",
   },
 });
 

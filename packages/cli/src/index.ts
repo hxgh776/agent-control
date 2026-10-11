@@ -11,7 +11,7 @@ import {
 } from '@agent-control/server/process';
 
 const program = new Command();
-program.name('actl').description('Agent Control——本地 Agent 能力总控台').version('0.1.0');
+program.name('actl').description('Agent Control——本地 Agent 能力总控台').version('0.2.0');
 
 let homeOverride: string | undefined;
 program

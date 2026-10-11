@@ -31,6 +31,10 @@
 |---|---|
 | ![MCP 发现](docs/screenshots/discovery.png) | ![调用日志](docs/screenshots/logs.png) |
 
+| Skill 管理（skills.sh 搜索 / 启停矩阵 / 更新检查） | 供应商（Claude Code / Codex / Gemini 一键切换） |
+|---|---|
+| ![Skill 管理](docs/screenshots/skills.png) | ![供应商](docs/screenshots/providers.png) |
+
 ## 🤔 为什么需要它
 
 如果你的机器上装了多个 AI Coding Agent，你大概率遇到过：
@@ -104,6 +108,8 @@ actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端
 - **MCP 发现**：官方 Registry / Smithery / npm 三源聚合，搜索按热度排序（npm 周下载量、Smithery 使用次数），相关性过滤 + 按名去重；
 - **协议桥接**：stdio ↔ streamable HTTP / SSE 双向兼容，老协议 server 和老协议 agent 都能接入；
 - **服务管理**：进程启停/重启、stderr 日志、调用日志（含耗时与错误）、工具调试台（不经 agent 直接调用）；
+- **供应商切换**：Claude Code / Codex / Gemini CLI 一键切换（222 个预设 + 自定义）；只动「供应商拥有的键」，hooks/permissions/用户 env 一个字节不碰；Codex 原生登录自动暂存/恢复（auth.json 四去向），写入带发布日志与崩溃前滚；
+- **Skill 管理**：skills.sh 搜索 + GitHub/本地 ZIP 安装（128MiB/512MiB/30000 条目供应链预算、zip-slip 双防线、symlink 拒收），SSOT + 每-agent 启停矩阵（内容哈希所有权守卫），更新检查与卸载备份（保留 20 份）；
 - **安全**：默认仅监听 127.0.0.1；访问令牌默认关闭、可在界面开启；上游凭证静态加密（Windows DPAPI），网关模式下不落地 agent 配置。
 
 ## 📚 文档
@@ -117,7 +123,7 @@ actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端
 ```bash
 pnpm install
 pnpm build        # 构建 core / server / web / @hxgh776/agent-control（cli，含 esbuild 单包）
-pnpm test         # 80 个单元 + 集成测试（含真实子进程网关全链路）
+pnpm test         # 126 个单元 + 集成测试（含真实子进程网关全链路）
 pnpm lint
 cd e2e && pnpm i && npx playwright install chromium && pnpm test
 ```
@@ -127,8 +133,8 @@ cd e2e && pnpm i && npx playwright install chromium && pnpm test
 ## 🗺 Roadmap
 
 - [x] ~~发布到 npm~~（`npm i -g @hxgh776/agent-control`）
-- [ ] Skill 管理（对齐 Agent Skills 规范 + skills.sh 源）
-- [ ] 供应商切换（Claude Code / Codex / Gemini）
+- [x] ~~Skill 管理~~（skills.sh 搜索 + GitHub/ZIP 安装 + 启停矩阵 + 更新检查）
+- [x] ~~供应商切换~~（Claude Code / Codex / Gemini，222 预设，吸收 cc-switch 防御性投影）
 - [ ] 项目级作用域（per-project 分发）
 - [ ] VS Code 适配器
 - [ ] macOS Keychain / Linux libsecret 凭证加密

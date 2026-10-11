@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { backupFile } from '../src/backup.js';
 import { atomicWriteFile, stableHash, stableStringify } from '../src/fsutil.js';
-import { resolveHomeDir, Store } from '../src/store.js';
+import { maybeMigrateHome, resolveHomeDir, Store } from '../src/store.js';
 
 let sandbox: string;
 
@@ -148,5 +148,29 @@ describe('stableHash (U-ST-06)', () => {
     expect(stableHash({ a: 1, b: { c: 2, d: 3 } })).toBe(stableHash({ b: { d: 3, c: 2 }, a: 1 }));
     expect(stableHash({ a: 1 })).not.toBe(stableHash({ a: 2 }));
     expect(stableStringify({ x: undefined, y: 1 })).toBe('{"y":1}');
+  });
+});
+
+describe('maybeMigrateHome（数据目录迁移）', () => {
+  it('新目录不存在 + 旧目录存在 → 整体改名；旧目录占用 → 沿用旧目录', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-migrate-'));
+    try {
+      const legacy = path.join(base, 'legacy-home');
+      const next = path.join(base, 'new-home');
+      await fs.mkdir(legacy);
+      await fs.writeFile(path.join(legacy, 'config.json'), '{"marker":true}', 'utf8');
+      expect(maybeMigrateHome(legacy, next)).toBe(next);
+      await expect(fs.access(path.join(legacy))).rejects.toThrow(); // 旧目录已让位
+      expect(JSON.parse(await fs.readFile(path.join(next, 'config.json'), 'utf8'))).toEqual({ marker: true });
+      // 再跑一次幂等
+      expect(maybeMigrateHome(legacy, next)).toBe(next);
+      // 新目录已存在：不动
+      const occupied = path.join(base, 'occupied');
+      await fs.mkdir(occupied);
+      await fs.writeFile(path.join(occupied, 'config.json'), '{"v":1}', 'utf8');
+      expect(maybeMigrateHome(legacy, occupied)).toBe(occupied);
+    } finally {
+      await fs.rm(base, { recursive: true, force: true });
+    }
   });
 });

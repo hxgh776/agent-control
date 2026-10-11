@@ -1,6 +1,6 @@
 {
   "name": "@hxgh776/agent-control",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Agent Control (actl) \u2014 local control plane for coding agents: MCP registry/distribution/gateway, provider switching and skills.",
   "type": "module",
   "bin": {
