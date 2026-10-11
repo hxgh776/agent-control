@@ -157,6 +157,7 @@ export default function App() {
           {tab === 'sync' && <SyncPage />}
           {tab === 'gateway' && <GatewayPage onNavigate={switchTab} />}
           {tab === 'logs' && <LogsPage />}
+        {tab === 'skills' && <SkillsPage />}
         </div>
       </main>
     </div>

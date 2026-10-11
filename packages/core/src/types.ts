@@ -91,6 +91,8 @@ export interface ManagerConfig {
   servers: ServerDef[];
   bindings: AgentBinding[];
   groups: ServerGroup[];
+  skills: import('./skills/types.js').InstalledSkill[];
+  skillTargets: import('./skills/types.js').SkillTarget[];
   syncState: Partial<Record<AgentType, AgentSyncState>>;
   settings: Settings;
 }

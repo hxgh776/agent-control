@@ -22,8 +22,9 @@ import {
   sortByPopularity,
   upsertGroup,
   upsertServer,
+  SKILL_AGENT_LIST,
 } from '@agent-control/core';
-import type { AgentType, ServerDef, UpsertServerInput } from '@agent-control/core';
+import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@agent-control/core';
 import { z } from 'zod';
 import type { Daemon } from './daemon.js';
 import { sendError, sendJson } from './http-util.js';
@@ -615,6 +616,110 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
   router.post('/api/gateway/stop', async (ctx) => {
     if (!daemon.gatewayControl) return sendError(ctx.res, 503, 'gateway 模块未加载', 'GATEWAY_DOWN');
     sendJson(ctx.res, 200, await daemon.gatewayControl('stop'));
+  });
+
+  // —— Skill 管理（S2，吸收自 cc-switch 的防御性设计）——
+  const skillToggleSchema = z.object({
+    agentType: z.string().min(1),
+    enabled: z.boolean(),
+  });
+  const skillInstallSchema = z.object({
+    repo: z.string().min(3),
+    skill: z.string().optional(),
+    branch: z.string().optional(),
+    enableFor: z.array(z.string()).optional(),
+  });
+  const skillZipSchema = z.object({
+    skill: z.string().optional(),
+    enableFor: z.array(z.string()).optional(),
+    contentBase64: z.string().min(8),
+  });
+  const asSkillAgents = (list: string[] | undefined) =>
+    (list ?? []).filter((a): a is SkillAgentType => SKILL_AGENT_LIST.includes(a as SkillAgentType));
+
+  router.get('/api/skills', async (ctx) => {
+    sendJson(ctx.res, 200, { skills: await daemon.skills.list(), ssotDir: daemon.skills.skillsDir });
+  });
+
+  router.get('/api/skills/search', async (ctx) => {
+    const q = ctx.query.get('q') ?? '';
+    const limit = Math.min(Number(ctx.query.get('limit') ?? 20) || 20, 50);
+    const offset = Math.max(Number(ctx.query.get('offset') ?? 0) || 0, 0);
+    try {
+      sendJson(ctx.res, 200, await daemon.skills.search(q, limit, offset));
+    } catch (err) {
+      sendError(ctx.res, 502, err instanceof Error ? err.message : String(err), 'SKILLS_SH_DOWN');
+    }
+  });
+
+  router.post('/api/skills/install', async (ctx) => {
+    const parsed = skillInstallSchema.safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    try {
+      const row = await daemon.skills.installFromRepo(parsed.data.repo, {
+        skill: parsed.data.skill,
+        branch: parsed.data.branch,
+        enableFor: asSkillAgents(parsed.data.enableFor),
+      });
+      sendJson(ctx.res, 200, { skill: row });
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_INSTALL_FAILED');
+    }
+  });
+
+  router.post('/api/skills/install-zip', async (ctx) => {
+    const parsed = skillZipSchema.safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    try {
+      const zip = Buffer.from(parsed.data.contentBase64, 'base64');
+      if (zip.length === 0) return sendError(ctx.res, 400, 'ZIP 内容为空');
+      const row = await daemon.skills.installFromLocalZip(zip, {
+        skill: parsed.data.skill,
+        enableFor: asSkillAgents(parsed.data.enableFor),
+      });
+      sendJson(ctx.res, 200, { skill: row });
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_INSTALL_FAILED');
+    }
+  });
+
+  router.post('/api/skills/:id/toggle', async (ctx) => {
+    const parsed = skillToggleSchema.safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    try {
+      const result = await daemon.skills.toggle(
+        ctx.params['id']!,
+        parsed.data.agentType as SkillAgentType,
+        parsed.data.enabled,
+      );
+      sendJson(ctx.res, 200, result);
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_TOGGLE_FAILED');
+    }
+  });
+
+  router.get('/api/skills/updates', async (ctx) => {
+    try {
+      sendJson(ctx.res, 200, await daemon.skills.checkUpdates());
+    } catch (err) {
+      sendError(ctx.res, 500, err instanceof Error ? err.message : String(err), 'SKILL_CHECK_FAILED');
+    }
+  });
+
+  router.post('/api/skills/:id/update', async (ctx) => {
+    try {
+      sendJson(ctx.res, 200, { skill: await daemon.skills.update(ctx.params['id']!) });
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_UPDATE_FAILED');
+    }
+  });
+
+  router.delete('/api/skills/:id', async (ctx) => {
+    try {
+      sendJson(ctx.res, 200, await daemon.skills.uninstall(ctx.params['id']!));
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_UNINSTALL_FAILED');
+    }
   });
 }
 

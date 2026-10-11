@@ -178,3 +178,42 @@ export interface ImportGroup {
   candidates: Array<{ agentType: string; key: string }>;
   suggested: { name: string; transport: string };
 }
+
+// —— Skill 管理（S2） ——
+
+export interface SkillProjectionStatusDTO {
+  agentType: string;
+  enabled: boolean;
+  projected: boolean;
+  modified?: boolean;
+}
+
+export interface SkillWithStatus {
+  id: string;
+  directory: string;
+  name: string;
+  description?: string;
+  source: 'github' | 'skills.sh' | 'local' | 'import';
+  repoOwner?: string;
+  repoName?: string;
+  branch?: string;
+  skillId?: string;
+  installs?: number;
+  readmeUrl?: string;
+  contentHash: string;
+  installedAt: string;
+  updatedAt: string;
+  targets: SkillProjectionStatusDTO[];
+}
+
+export interface SkillSearchResult {
+  query: string;
+  count: number;
+  skills: Array<{ skillId: string; name: string; installs: number; repo: string; branch: string }>;
+}
+
+export interface SkillUpdateReport {
+  updates: Array<{ skillId: string; directory: string; repo: string; localHash: string; remoteHash: string; missing?: boolean }>;
+  failures: Array<{ repo: string; reason: string }>;
+  checkedAt: string;
+}

@@ -9,6 +9,7 @@ import {
   detectAgents,
   makeAgents,
 } from '@agent-control/core';
+import { SkillsService } from '@agent-control/core';
 import type { AgentDetection, ManagerConfig } from '@agent-control/core';
 import { Logger } from './logger.js';
 import type { LogLevel } from './logger.js';
@@ -56,6 +57,7 @@ export class Daemon {
   readonly store: Store;
   readonly logger: Logger;
   readonly sync: SyncEngine;
+  readonly skills: SkillsService;
   readonly gateway: Gateway;
   config!: ManagerConfig;
   readonly router = new Router();
@@ -92,6 +94,12 @@ export class Daemon {
       // G7：stdio 反向桥脚本与本 daemon 同目录（dist/bridge-main.js）
       stdioBridge: { command: 'node', baseArgs: [path.join(import.meta.dirname, 'bridge-main.js')] },
       ...(agentRoot ? { agents: makeAgents(agentRoot) } : {}),
+    });
+    this.skills = new SkillsService({
+      store: this.store,
+      getConfig: () => this.config,
+      saveConfig: () => this.saveConfig(),
+      ...(agentRoot ? { agentRoot } : {}),
     });
     if (!agentRoot && (opts.homeDir || process.env['AGENT_CONTROL_HOME'] || process.env['MCP_MANAGER_HOME'])) {
       this.logger.warn(

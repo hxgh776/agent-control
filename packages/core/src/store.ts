@@ -43,6 +43,31 @@ const configSchema = z.object({
       updatedAt: z.string(),
     }),
   ).default([]), // 旧版本配置无 groups 字段 → 迁移为空数组
+  skills: z.array(
+    z.object({
+      id: z.string(),
+      directory: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      source: z.enum(['github', 'skills.sh', 'local', 'import']),
+      repoOwner: z.string().optional(),
+      repoName: z.string().optional(),
+      branch: z.string().optional(),
+      skillId: z.string().optional(),
+      installs: z.number().optional(),
+      readmeUrl: z.string().optional(),
+      contentHash: z.string(),
+      installedAt: z.string(),
+      updatedAt: z.string(),
+    }),
+  ).default([]),
+  skillTargets: z.array(
+    z.object({
+      skillId: z.string(),
+      agentType: z.string(),
+      enabled: z.boolean(),
+    }),
+  ).default([]),
   syncState: z.record(
     z.object({
       agentType: z.string(),
@@ -66,6 +91,8 @@ export function defaultConfig(): ManagerConfig {
     servers: [],
     bindings: [],
     groups: [],
+    skills: [],
+    skillTargets: [],
     syncState: {},
     settings: {
       port: 6280,
