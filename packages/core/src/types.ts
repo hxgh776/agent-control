@@ -57,7 +57,10 @@ export interface ServerGroup {
 }
 
 /** 网关聚合配置在各 agent 配置文件中占用的公共键名 */
-export const GATEWAY_KEY = 'mcp-manager-gateway';
+export const GATEWAY_KEY = 'agent-control-gateway';
+
+/** 项目更名前使用的旧键名：同步时无条件清理，导入时同样视为自身条目 */
+export const LEGACY_GATEWAY_KEY = 'mcp-manager-gateway';
 
 /** 管辖片段（写入 agent 配置的某个键）的 hash 快照，用于 C8 冲突检测 */
 export interface KeyState {

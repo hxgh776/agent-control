@@ -1,5 +1,5 @@
 {
-  "name": "@mcp-manager/e2e",
+  "name": "@agent-control/e2e",
   "version": "0.1.0",
   "private": true,
   "type": "module",

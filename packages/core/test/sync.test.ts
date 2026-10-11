@@ -22,13 +22,13 @@ let engine: SyncEngine;
 let config: ManagerConfig;
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'mcpmgr-sync-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-sync-'));
   agents = makeAgents(sandbox);
   store = new Store(sandbox);
   engine = new SyncEngine({
     backupsDir: store.backupsDir,
     agents,
-    stdioBridge: { command: 'node', baseArgs: ['C:/tools/mcpmgr/bridge-main.js'] },
+    stdioBridge: { command: 'node', baseArgs: ['C:/tools/agent-control/bridge-main.js'] },
   });
   config = await store.load();
 });
@@ -96,12 +96,13 @@ describe('detect + import (U-IM / C1 C5)', () => {
     expect(applyImport(config, groups2)).toHaveLength(0);
   });
 
-  it('Issue-1：导入预览排除网关公共条目 mcp-manager-gateway', async () => {
+  it('Issue-1：导入预览排除网关公共条目 agent-control-gateway（含更名前旧键）', async () => {
     await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
     await fs.writeFile(
       path.join(sandbox, '.cursor', 'mcp.json'),
       JSON.stringify({
         mcpServers: {
+          'agent-control-gateway': { url: 'http://127.0.0.1:6280/mcp', headers: { Authorization: 'Bearer x' } },
           'mcp-manager-gateway': { url: 'http://127.0.0.1:6280/mcp', headers: { Authorization: 'Bearer x' } },
           real: { command: 'node', args: ['real.js'] },
         },
@@ -198,7 +199,7 @@ describe('sync engine (I-SY)', () => {
     });
 
     const codexText = await fs.readFile(path.join(sandbox, '.codex', 'config.toml'), 'utf8');
-    expect(codexText).toContain('[mcp_servers.mcp-manager-gateway]');
+    expect(codexText).toContain('[mcp_servers.agent-control-gateway]');
     expect(codexText).toContain('bridge-main.js');
     expect(codexText).toContain(`http://127.0.0.1:${config.settings.port}/agents/codex/mcp`);
     expect(codexText).not.toContain('--token=');

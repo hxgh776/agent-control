@@ -24,7 +24,7 @@ const publishManifest = {
   files: ['*'],
   engines: pkg.engines,
   license: 'MIT',
-  repository: pkg.repository ?? { type: 'git', url: 'git+https://github.com/hxgh776/mcp-manager.git' },
+  repository: pkg.repository ?? { type: 'git', url: 'git+https://github.com/hxgh776/agent-control.git' },
   dependencies: {},
 };
 await fs.writeFile(path.join(tmp, 'package.json'), JSON.stringify(publishManifest, null, 2) + '\n');
@@ -33,6 +33,8 @@ await fs.cp(path.resolve(cliDir, 'dist'), path.join(tmp, 'dist'), { recursive: t
 for (const f of ['README.md', 'LICENSE']) {
   await fs.cp(path.resolve(cliDir, '../..', f), path.join(tmp, f));
 }
+// README 里的相对路径图片在 npmjs.com 上按包内文件解析，品牌图需随包携带
+await fs.cp(path.resolve(cliDir, '../..', 'docs/brand'), path.join(tmp, 'docs/brand'), { recursive: true });
 
 // 发布必须直连官方源：本机全局 registry 常配成 npmmirror 镜像，镜像不接受发布
 execSync(`npm publish "${tmp}" --access public --registry=https://registry.npmjs.org`, {

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -77,13 +77,23 @@ export function defaultConfig(): ManagerConfig {
 }
 
 /**
- * 数据目录解析优先级：构造参数 > MCP_MANAGER_HOME（测试沙箱）> ~/.mcp-manager
+ * 数据目录解析优先级：构造参数 > AGENT_CONTROL_HOME（测试沙箱，兼容旧名 MCP_MANAGER_HOME）
+ * > ~/.agent-control（若存在旧目录 ~/.mcp-manager 且新目录不存在，一次性整体迁移）
  */
 export function resolveHomeDir(explicit?: string): string {
   if (explicit) return explicit;
-  const env = process.env['MCP_MANAGER_HOME'];
+  const env = process.env['AGENT_CONTROL_HOME'] ?? process.env['MCP_MANAGER_HOME'];
   if (env) return env;
-  return path.join(homedir(), '.mcp-manager');
+  const legacy = path.join(homedir(), '.mcp-manager');
+  const home = path.join(homedir(), '.agent-control');
+  if (!existsSync(home) && existsSync(legacy)) {
+    try {
+      renameSync(legacy, home);
+    } catch {
+      return legacy; // 旧目录被占用（如旧 daemon 仍在运行）：沿用旧目录，下次启动再迁
+    }
+  }
+  return home;
 }
 
 export class Store {

@@ -7,8 +7,8 @@ import {
   SyncEngine,
   detectAgents,
   makeAgents,
-} from '@mcp-manager/core';
-import type { AgentDetection, ManagerConfig } from '@mcp-manager/core';
+} from '@agent-control/core';
+import type { AgentDetection, ManagerConfig } from '@agent-control/core';
 import { Logger } from './logger.js';
 import type { LogLevel } from './logger.js';
 import { Router } from './router.js';
@@ -39,7 +39,7 @@ export interface DaemonOptions {
   /**
    * agent 配置文件根目录（缺省为真实用户主目录）。
    * 测试/开发必须传沙箱目录，否则分发会写入真实 agent 配置！
-   * 也可用环境变量 MCP_MANAGER_AGENT_HOME 指定。
+   * 也可用环境变量 AGENT_CONTROL_AGENT_HOME（兼容旧名 MCP_MANAGER_AGENT_HOME）指定。
    */
   agentConfigRoot?: string;
   /** 测试可传 0 使用临时端口；不持久化 */
@@ -83,14 +83,15 @@ export class Daemon {
     this.store = new Store(opts.homeDir);
     this.logger = new Logger(path.join(this.store.logsDir, 'daemon.log'));
     this.gateway = new Gateway(this);
-    const agentRoot = opts.agentConfigRoot ?? process.env['MCP_MANAGER_AGENT_HOME'];
+    const agentRoot =
+      opts.agentConfigRoot ?? process.env['AGENT_CONTROL_AGENT_HOME'] ?? process.env['MCP_MANAGER_AGENT_HOME'];
     this.sync = new SyncEngine({
       backupsDir: this.store.backupsDir,
       // G7：stdio 反向桥脚本与本 daemon 同目录（dist/bridge-main.js）
       stdioBridge: { command: 'node', baseArgs: [path.join(import.meta.dirname, 'bridge-main.js')] },
       ...(agentRoot ? { agents: makeAgents(agentRoot) } : {}),
     });
-    if (!agentRoot && (opts.homeDir || process.env['MCP_MANAGER_HOME'])) {
+    if (!agentRoot && (opts.homeDir || process.env['AGENT_CONTROL_HOME'] || process.env['MCP_MANAGER_HOME'])) {
       this.logger.warn(
         '数据目录已重定向但 agent 配置仍指向真实用户主目录——测试场景请传 agentConfigRoot',
       );

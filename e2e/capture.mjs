@@ -9,7 +9,7 @@ import { chromium } from '@playwright/test';
 
 const outDir = new URL('../docs/screenshots', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 
-const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcpmgr-shot-'));
+const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-shot-'));
 const serverDist = new URL('../packages/server/dist/index.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const port = 6291;
 const child = spawn(

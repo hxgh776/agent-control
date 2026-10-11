@@ -98,7 +98,7 @@ async function startFakeHttpUpstream(): Promise<FakeHttpUpstream> {
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'mcpmgr-gw-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-gw-'));
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();
   base = daemon.baseUrl;

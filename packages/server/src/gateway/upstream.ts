@@ -2,9 +2,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { decryptRecord } from '@mcp-manager/core';
+import { decryptRecord } from '@agent-control/core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ServerDef } from '@mcp-manager/core';
+import type { ServerDef } from '@agent-control/core';
 import type { Logger } from '../logger.js';
 
 export type UpstreamStatus = 'idle' | 'starting' | 'ready' | 'error' | 'backoff';
@@ -75,7 +75,7 @@ export class Upstream {
 
   private async connect(): Promise<Client> {
     const client = new Client(
-      { name: 'mcp-manager-gateway', version: '0.1.0' },
+      { name: 'agent-control-gateway', version: '0.1.0' },
       { capabilities: {} },
     );
     // S4：静态加密凭证在使用点解密（内存明文，不落盘）

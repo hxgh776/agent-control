@@ -15,8 +15,8 @@
     "release": "node scripts/publish.mjs"
   },
   "dependencies": {
-    "@mcp-manager/core": "workspace:*",
-    "@mcp-manager/server": "workspace:*",
+    "@agent-control/core": "workspace:*",
+    "@agent-control/server": "workspace:*",
     "commander": "^13.0.0"
   },
   "engines": {

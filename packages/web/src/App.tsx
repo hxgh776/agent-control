@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, getToken, setToken } from './api';
 import type { StatusInfo } from './api';
-import { Icon, Spinner } from './ui';
+import { BrandMark, Icon, Spinner } from './ui';
 import { StatusPage } from './pages/StatusPage';
 import { ServersPage } from './pages/ServersPage';
 import { SyncPage } from './pages/SyncPage';
@@ -98,8 +98,8 @@ export default function App() {
     <div className="flex h-screen overflow-hidden">
       <aside className="flex w-56 shrink-0 flex-col bg-slate-950">
         <div className="flex h-16 shrink-0 items-center gap-3 border-b border-white/[0.06] px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-sm font-bold text-white shadow-lg shadow-brand-500/30">
-            A
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 shadow-lg shadow-brand-500/30">
+            <BrandMark className="h-5.5 w-5.5 text-white" />
           </div>
           <div className="leading-tight">
             <div className="text-[15px] font-semibold text-white">Agent Control</div>
@@ -179,8 +179,8 @@ function TokenGate({ onOk }: { onOk: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-slate-950">
       <div className="w-96 animate-scale-in rounded-2xl bg-white p-8 shadow-pop">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 text-base font-bold text-white shadow-lg shadow-brand-500/30">
-            A
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-violet-500 shadow-lg shadow-brand-500/30">
+            <BrandMark className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-slate-900">Agent Control</h1>
@@ -188,7 +188,7 @@ function TokenGate({ onOk }: { onOk: () => void }) {
           </div>
         </div>
         <p className="mb-4 text-xs leading-relaxed text-slate-500">
-          输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.mcp-manager/config.json</code>{' '}
+          输入访问令牌（见 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">~/.agent-control/config.json</code>{' '}
           的 settings.token，或 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px]">actl status</code>）
         </p>
         <input

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Daemon } from '../src/daemon.js';
-import { Store } from '@mcp-manager/core';
+import { Store } from '@agent-control/core';
 
 let sandbox: string;
 let daemon: Daemon;
@@ -29,7 +29,7 @@ async function api(
 }
 
 beforeEach(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'mcpmgr-apitest-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-apitest-'));
   // 沙箱纪律：agent 配置也必须重定向，绝不触碰真实 agent 配置
   daemon = new Daemon({ homeDir: sandbox, agentConfigRoot: sandbox, port: 0 });
   await daemon.start();

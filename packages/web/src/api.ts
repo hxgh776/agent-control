@@ -1,7 +1,16 @@
-const TOKEN_KEY = 'mcpmgr_token';
+const TOKEN_KEY = 'agentcontrol_token';
+const LEGACY_TOKEN_KEY = 'mcpmgr_token';
 
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? '';
+  const current = localStorage.getItem(TOKEN_KEY);
+  if (current) return current;
+  // 重命名迁移：旧键里的令牌原样升级到新键，避免用户重登
+  const legacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+  if (legacy) {
+    localStorage.setItem(TOKEN_KEY, legacy);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+  }
+  return legacy ?? '';
 }
 
 export function setToken(token: string): void {

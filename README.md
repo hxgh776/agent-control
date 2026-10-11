@@ -1,10 +1,17 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-lockup-dark.png" />
+    <img src="docs/brand/logo-lockup.png" alt="AgentControl —— one control plane for MCP servers, providers & skills" width="440" />
+  </picture>
+</p>
+
 # Agent Control
 
-[![CI](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/hxgh776/mcp-manager/actions/workflows/ci.yml)
+[![CI](https://github.com/hxgh776/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/hxgh776/agent-control/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-**Agent Control**（npm 包 [`@hxgh776/agent-control`](https://www.npmjs.com/package/@hxgh776/agent-control)，命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。未来同一套底座还将管理 **Skill** 与**供应商切换**。
+**Agent Control**（npm 包 [`@hxgh776/agent-control`](https://www.npmjs.com/package/@hxgh776/agent-control)，命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**与**供应商切换**已内置（吸收自 cc-switch 的防御性设计）。
 
 > Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。独立实现，与 cc-switch 无关联。
 

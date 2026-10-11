@@ -1,6 +1,6 @@
 import { Command } from 'commander';
-import { Store } from '@mcp-manager/core';
-import { runBridgeStdio } from '@mcp-manager/server/gateway/bridge';
+import { Store } from '@agent-control/core';
+import { runBridgeStdio } from '@agent-control/server/gateway/bridge';
 import {
   isPidAlive,
   killTree,
@@ -8,14 +8,14 @@ import {
   removePidFile,
   resolveDaemonEntry,
   spawnDetached,
-} from '@mcp-manager/server/process';
+} from '@agent-control/server/process';
 
 const program = new Command();
 program.name('actl').description('Agent Control——本地 Agent 能力总控台').version('0.1.0');
 
 let homeOverride: string | undefined;
 program
-  .option('--home <dir>', '数据目录（缺省 ~/.mcp-manager）')
+  .option('--home <dir>', '数据目录（缺省 ~/.agent-control）')
   .hook('preAction', (cmd) => {
     homeOverride = cmd.opts<{ home?: string }>().home;
   });
@@ -88,7 +88,7 @@ program
       }
       await new Promise((r) => setTimeout(r, 200));
     }
-    fail('daemon 启动超时，请查看日志: ~/.mcp-manager/logs/daemon.log');
+    fail('daemon 启动超时，请查看日志: ~/.agent-control/logs/daemon.log');
   });
 
 program

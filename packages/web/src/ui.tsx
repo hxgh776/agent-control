@@ -383,3 +383,18 @@ export function formatLocalDateTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString('zh-CN', { hour12: false });
 }
+
+/** 品牌 Logo：A 字母（顶点 = agent 节点，横杠带控制旋钮），颜色跟随 currentColor */
+export function BrandMark({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+      <g stroke="currentColor" strokeWidth={5.6} strokeLinecap="round">
+        <path d="M32 14 15.5 50.5" />
+        <path d="M32 14 48.5 50.5" />
+        <path d="M22 38h20" />
+      </g>
+      <circle cx="32" cy="14" r="5.2" fill="currentColor" />
+      <circle cx="37.5" cy="38" r="4.2" stroke="currentColor" strokeWidth={2.8} />
+    </svg>
+  );
+}

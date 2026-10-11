@@ -95,18 +95,28 @@ describe('Store corruption handling (U-ST-03)', () => {
 });
 
 describe('resolveHomeDir (U-ST-07)', () => {
-  const original = process.env['MCP_MANAGER_HOME'];
+  const original = process.env['AGENT_CONTROL_HOME'];
 
   it('显式参数优先于环境变量，环境变量优先于 home', () => {
     try {
-      process.env['MCP_MANAGER_HOME'] = 'D:\\sandbox-home';
+      process.env['AGENT_CONTROL_HOME'] = 'D:\\sandbox-home';
       expect(resolveHomeDir('D:\\explicit')).toBe('D:\\explicit');
       expect(resolveHomeDir()).toBe('D:\\sandbox-home');
-      delete process.env['MCP_MANAGER_HOME'];
-      expect(resolveHomeDir()).toBe(path.join(os.homedir(), '.mcp-manager'));
+      delete process.env['AGENT_CONTROL_HOME'];
+      expect(resolveHomeDir()).toBe(path.join(os.homedir(), '.agent-control'));
     } finally {
-      if (original === undefined) delete process.env['MCP_MANAGER_HOME'];
-      else process.env['MCP_MANAGER_HOME'] = original;
+      if (original === undefined) delete process.env['AGENT_CONTROL_HOME'];
+      else process.env['AGENT_CONTROL_HOME'] = original;
+    }
+  });
+
+  it('旧环境变量名 MCP_MANAGER_HOME 仍被兼容（升级过渡期）', () => {
+    try {
+      delete process.env['AGENT_CONTROL_HOME'];
+      process.env['MCP_MANAGER_HOME'] = 'D:/legacy-home';
+      expect(resolveHomeDir()).toBe('D:/legacy-home');
+    } finally {
+      delete process.env['MCP_MANAGER_HOME'];
     }
   });
 });

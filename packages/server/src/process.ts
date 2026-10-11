@@ -3,17 +3,17 @@ import { createRequire } from 'node:module';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { readTextIfExists } from '@mcp-manager/core';
+import { readTextIfExists } from '@agent-control/core';
 
 /** 解析 daemon 入口：
  *  - npm 安装态：与 CLI 同目录的 bundle（dist/daemon.js，esbuild 双入口产物）
- *  - workspace 开发态：@mcp-manager/server 包的 dist/index.js
+ *  - workspace 开发态：@agent-control/server 包的 dist/index.js
  */
 export function resolveDaemonEntry(): string {
   const bundled = path.resolve(import.meta.dirname, 'daemon.js');
   if (existsSync(bundled)) return bundled;
   const require = createRequire(import.meta.url);
-  return require.resolve('@mcp-manager/server');
+  return require.resolve('@agent-control/server');
 }
 
 export async function readPid(pidPath: string): Promise<number | null> {
@@ -34,7 +34,7 @@ export function isPidAlive(pid: number): boolean {
 
 /** 分离式启动 daemon：脱离父进程生命周期，Windows/POSIX 通用 */
 export function spawnDetached(entryFile: string, homeDir?: string): number {
-  const env = homeDir ? { ...process.env, MCP_MANAGER_HOME: homeDir } : { ...process.env };
+  const env = homeDir ? { ...process.env, AGENT_CONTROL_HOME: homeDir } : { ...process.env };
   const child = spawn(process.execPath, [entryFile], {
     detached: true,
     stdio: 'ignore',

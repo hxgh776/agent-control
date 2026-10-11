@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- AgentControl mark, monochrome slate-900 — for light backgrounds. Knob is an open ring (background-independent). -->
+  <g stroke="#0F172A" stroke-width="5.6" stroke-linecap="round" fill="none">
+    <path d="M32 14 15.5 50.5"/>
+    <path d="M32 14 48.5 50.5"/>
+    <path d="M22 38h20"/>
+  </g>
+  <circle cx="32" cy="14" r="5.2" fill="#0F172A"/>
+  <circle cx="37.5" cy="38" r="4.2" stroke="#0F172A" stroke-width="2.8"/>
+</svg>

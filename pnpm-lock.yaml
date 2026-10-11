@@ -35,10 +35,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@mcp-manager/core':
+      '@agent-control/core':
         specifier: workspace:*
         version: link:../core
-      '@mcp-manager/server':
+      '@agent-control/server':
         specifier: workspace:*
         version: link:../server
       commander:
@@ -63,7 +63,7 @@ importers:
 
   packages/server:
     dependencies:
-      '@mcp-manager/core':
+      '@agent-control/core':
         specifier: workspace:*
         version: link:../core
       '@modelcontextprotocol/sdk':

@@ -4,7 +4,7 @@ import { decryptRecord } from './secretbox.js';
 import type { AgentAdapter, ConflictInfo, ConflictResolution, FragmentWrite, RawServerEntry } from './adapters/types.js';
 import { boundServers } from './registry.js';
 import { AGENTS } from './agents.js';
-import { GATEWAY_KEY } from './types.js';
+import { GATEWAY_KEY, LEGACY_GATEWAY_KEY } from './types.js';
 import type {
   AgentSyncState,
   AgentType,
@@ -133,6 +133,8 @@ export class SyncEngine {
             ...(withAuth ? { headers: { Authorization: `Bearer ${config.settings.token}` } } : {}),
           },
         });
+        // 项目更名前的旧公共键：顺手清理，避免在 agent 配置里残留死条目
+        writes.push({ key: LEGACY_GATEWAY_KEY, entry: null });
         keyToServer.set(GATEWAY_KEY, undefined);
       } else if (this.opts.stdioBridge) {
         // G7：Codex 等经 stdio 桥接入分组网关端点
@@ -145,6 +147,7 @@ export class SyncEngine {
             withAuth ? config.settings.token : undefined,
           ),
         });
+        writes.push({ key: LEGACY_GATEWAY_KEY, entry: null }); // 旧键清理
         keyToServer.set(GATEWAY_KEY, undefined);
       } else {
         unsupported.push({
@@ -154,6 +157,7 @@ export class SyncEngine {
       }
     } else if (hadGatewayKey) {
       writes.push({ key: GATEWAY_KEY, entry: null });
+      writes.push({ key: LEGACY_GATEWAY_KEY, entry: null }); // 旧键清理
       keyToServer.set(GATEWAY_KEY, undefined);
     }
 

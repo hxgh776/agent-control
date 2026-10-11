@@ -21,7 +21,7 @@ const common = {
   splitting: true,
   sourcemap: false,
   logLevel: 'info',
-  // 只外置 Node 内建模块；@mcp-manager/* 与其余依赖全部内联
+  // 只外置 Node 内建模块；@agent-control/* 与其余依赖全部内联
   external: ['node:*'],
 };
 

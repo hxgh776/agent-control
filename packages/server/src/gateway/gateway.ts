@@ -1,7 +1,7 @@
 import { promises as fs, statSync, readFileSync, openSync, readSync, closeSync } from 'node:fs';
 import path from 'node:path';
-import { effectiveBoundIds } from '@mcp-manager/core';
-import type { AgentType } from '@mcp-manager/core';
+import { effectiveBoundIds } from '@agent-control/core';
+import type { AgentType } from '@agent-control/core';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { checkToken, sendError } from '../http-util.js';
 import type { Daemon, GatewayHttpHandler, GatewayStatus } from '../daemon.js';

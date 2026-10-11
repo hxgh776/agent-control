@@ -22,8 +22,8 @@ import {
   sortByPopularity,
   upsertGroup,
   upsertServer,
-} from '@mcp-manager/core';
-import type { AgentType, ServerDef, UpsertServerInput } from '@mcp-manager/core';
+} from '@agent-control/core';
+import type { AgentType, ServerDef, UpsertServerInput } from '@agent-control/core';
 import { z } from 'zod';
 import type { Daemon } from './daemon.js';
 import { sendError, sendJson } from './http-util.js';
