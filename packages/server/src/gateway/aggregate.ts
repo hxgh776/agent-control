@@ -44,7 +44,7 @@ export function createAggregateServer(mgr: UpstreamManager, opts: {
   filter?: (def: { id: string }) => boolean;
 }): Server {
   const server = new Server(
-    { name: 'agent-control', version: '0.2.0' },
+    { name: 'agent-control', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
