@@ -1,15 +1,13 @@
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
-import { Badge, Btn, Card, ErrorBanner, OkBanner, rowCls, theadCls } from '../ui';
+import { Badge, Btn, Card, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
 export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
 
   const status = useQuery({ queryKey: ['status'], queryFn: () => api.get<StatusInfo>('/api/status') });
   const agents = useQuery({
@@ -28,11 +26,10 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
   const doImport = useMutation({
     mutationFn: (fingerprints: string[]) => api.post<{ added: unknown[] }>('/api/import', { fingerprints }),
     onSuccess: (res) => {
-      setOk(`已导入 ${res.added.length} 个 server，去「Agent 分发」页勾选同步`);
-      setError(null);
+      toast.ok(`已导入 ${res.added.length} 个 server，去「Agent 分发」页勾选同步`);
       void qc.invalidateQueries();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const pending = (imports.data?.groups ?? []).filter((g) => !g.alreadyImported);
@@ -40,9 +37,6 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
 
   return (
     <div>
-      <ErrorBanner message={error} />
-      <OkBanner message={ok} />
-
       <Card title="运行状态">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3 xl:grid-cols-5">
           <div className="min-w-0 md:col-span-2 xl:col-span-1">
@@ -114,7 +108,17 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
         </div>
       </Card>
 
-      <Card title="从现有配置导入" subtitle="扫描各 agent 已有的 MCP 配置，一键收编进注册表">
+      <Card
+        title="从现有配置导入"
+        subtitle="扫描各 agent 已有的 MCP 配置，一键收编进注册表"
+        actions={
+          pending.length > 1 ? (
+            <Btn small kind="primary" disabled={doImport.isPending} onClick={() => doImport.mutate(pending.map((g) => g.fingerprint))}>
+              全部导入（{pending.length}）
+            </Btn>
+          ) : undefined
+        }
+      >
         {pending.length === 0 ? (
           <p className="text-sm text-slate-500">没有发现可导入的新 server 配置。</p>
         ) : (

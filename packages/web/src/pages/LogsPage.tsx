@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import type { CallRecordDTO, GatewayInfo } from '../api';
-import { Badge, Card, formatLocalDateTime, formatLocalTime, rowCls, selectCls, theadCls } from '../ui';
+import { Badge, Card, CopyBtn, formatLocalDateTime, formatLocalTime, rowCls, selectCls, theadCls } from '../ui';
 
 export function LogsPage() {
   const [selected, setSelected] = useState<string>('');
+  const [failOnly, setFailOnly] = useState(false);
+  const logPre = useRef<HTMLPreElement>(null);
   const calls = useQuery({
     queryKey: ['calls'],
     queryFn: () => api.get<{ calls: CallRecordDTO[] }>('/api/logs/calls'),
@@ -25,14 +27,34 @@ export function LogsPage() {
     refetchInterval: 3000,
   });
 
+  // 日志追加后自动滚到底部，始终看到最新输出
+  const lineCount = logs.data?.lines.length ?? 0;
+  useEffect(() => {
+    const el = logPre.current;
+    if (el !== null) el.scrollTop = el.scrollHeight;
+  }, [lineCount, current]);
+
   // 后端存的是 UTC ISO 时间；这里转浏览器本地时区显示
-  const list = (calls.data?.calls ?? []).slice().reverse();
+  const all = (calls.data?.calls ?? []).slice().reverse();
+  const list = failOnly ? all.filter((c) => !c.ok) : all;
 
   return (
     <div>
       <Card
         title="网关调用日志"
         subtitle={`时间为本机时区（UTC${getTimezoneSuffix()}），每 3 秒自动刷新；最多保留最近 200 条`}
+        actions={
+          <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              data-testid="logs-fail-only"
+              checked={failOnly}
+              onChange={(e) => setFailOnly(e.target.checked)}
+              className="h-3.5 w-3.5"
+            />
+            只看失败
+          </label>
+        }
       >
         <div className="max-h-[46vh] overflow-y-auto">
           <table className="w-full text-sm">
@@ -64,7 +86,7 @@ export function LogsPage() {
               {list.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-400">
-                    暂无调用记录。
+                    {failOnly ? '没有失败的调用记录。' : '暂无调用记录。'}
                   </td>
                 </tr>
               )}
@@ -76,16 +98,20 @@ export function LogsPage() {
       <Card
         title="上游进程日志（stderr）"
         actions={
-          <select className={selectCls} value={current} onChange={(e) => setSelected(e.target.value)}>
-            {upstreams.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.id}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select className={selectCls} value={current} onChange={(e) => setSelected(e.target.value)}>
+              {upstreams.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.id}
+                </option>
+              ))}
+            </select>
+            {lineCount > 0 && <CopyBtn text={(logs.data?.lines ?? []).join('\n')} />}
+          </div>
         }
       >
         <pre
+          ref={logPre}
           data-testid="upstream-logs"
           className="max-h-[32vh] overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-xs leading-relaxed text-slate-200 ring-1 ring-white/10"
         >

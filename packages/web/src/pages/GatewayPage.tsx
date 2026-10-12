@@ -1,14 +1,12 @@
-import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setToken } from '../api';
 import type { AgentInfo, GatewayInfo, StatusInfo } from '../api';
-import { Badge, Btn, Card, ErrorBanner, OkBanner, Toggle, codeChipCls, rowCls, theadCls } from '../ui';
+import { Badge, Btn, Card, CopyBtn, Toggle, codeChipCls, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
 export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
 
   const status = useQuery({
     queryKey: ['status'],
@@ -22,6 +20,7 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
   const token = useQuery({
     queryKey: ['token'],
     queryFn: () => api.get<{ token: string }>('/api/settings/token'),
+    enabled: status.data?.authRequired === true,
   });
   const agents = useQuery({
     queryKey: ['agents'],
@@ -32,19 +31,17 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
     mutationFn: (action: 'start' | 'stop') => api.post(`/api/gateway/${action}`),
     onSuccess: () => {
       void qc.invalidateQueries();
-      setOk(null);
-      setError(null);
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const rotate = useMutation({
     mutationFn: () => api.post<{ token: string; resyncRequired: boolean }>('/api/settings/token/rotate'),
     onSuccess: (res) => {
       void qc.invalidateQueries();
-      setOk(res.resyncRequired ? 'token 已轮换——已分发的网关配置需要重新同步！' : 'token 已轮换');
+      toast.ok(res.resyncRequired ? 'token 已轮换——已分发的网关配置需要重新同步！' : 'token 已轮换');
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const authRequired = status.data?.authRequired === true;
@@ -59,17 +56,16 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
         } catch { /* 忽略 */ }
       }
       void qc.invalidateQueries();
-      setOk(on ? '访问令牌已启用——请到「Agent 分发」页重新同步（分发内容将携带凭证）' : '访问令牌已关闭——请到「Agent 分发」页重新同步（去除凭证）');
-      setError(null);
+      toast.ok(on ? '访问令牌已启用——请到「Agent 分发」页重新同步（分发内容将携带凭证）' : '访问令牌已关闭——请到「Agent 分发」页重新同步（去除凭证）');
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const restart = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
       api.post(`/api/servers/${id}/${action}`),
     onSuccess: () => void qc.invalidateQueries(),
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const gw = gateway.data;
@@ -78,9 +74,6 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
 
   return (
     <div>
-      <ErrorBanner message={error} />
-      <OkBanner message={ok} />
-
       {status.data?.resyncPending === true && (
         <div data-testid="resync-banner" className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
           ⚠ token 已轮换或访问令牌开关已变更，已分发的网关配置需要重新同步——请到
@@ -113,9 +106,7 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
                 <code data-testid="endpoint-url" className={`min-w-0 flex-1 ${codeChipCls}`}>
                   {endpoint}
                 </code>
-                <Btn small onClick={() => void navigator.clipboard.writeText(endpoint)}>
-                  复制
-                </Btn>
+                <CopyBtn text={endpoint} />
               </>
             )}
           </div>
@@ -137,9 +128,12 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
         >
           {authRequired ? (
             <>
-              <code data-testid="token-value" className={codeChipCls}>
-                {token.data?.token}
-              </code>
+              <div className="flex items-center gap-2">
+                <code data-testid="token-value" className={`min-w-0 flex-1 ${codeChipCls}`}>
+                  {token.data?.token}
+                </code>
+                <CopyBtn text={token.data?.token ?? ''} />
+              </div>
               <div className="mt-2 flex items-center gap-2">
                 <Btn small kind="danger" onClick={() => rotate.mutate()}>
                   轮换 token
@@ -161,19 +155,23 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
       <Card title="Agent 分组端点" subtitle="每个 agent 只看到自己有效绑定的网关 server——同步时写入的就是该 agent 的专属 URL">
         <table className="w-full text-sm">
           <tbody>
-            {boundAgents.map((a) => (
-              <tr key={a.agentType} className={rowCls}>
-                <td className="w-40 py-2.5 font-medium text-slate-800">{a.displayName}</td>
-                <td className="py-2.5">
-                  <code className={`block break-all ${codeChipCls}`}>
-                    http://127.0.0.1:{status.data?.port}/agents/{a.agentType}/mcp
-                  </code>
-                </td>
-                <td className="w-28 py-2.5 text-right text-xs tabular-nums text-slate-500">
-                  绑定 {a.boundServerIds.length} 个
-                </td>
-              </tr>
-            ))}
+            {boundAgents.map((a) => {
+              const agentEndpoint = `http://127.0.0.1:${status.data?.port}/agents/${a.agentType}/mcp`;
+              return (
+                <tr key={a.agentType} className={rowCls}>
+                  <td className="w-40 py-2.5 font-medium text-slate-800">{a.displayName}</td>
+                  <td className="py-2.5">
+                    <div className="flex items-center gap-2">
+                      <code className={`block min-w-0 flex-1 break-all ${codeChipCls}`}>{agentEndpoint}</code>
+                      <CopyBtn text={agentEndpoint} />
+                    </div>
+                  </td>
+                  <td className="w-28 py-2.5 text-right text-xs tabular-nums text-slate-500">
+                    绑定 {a.boundServerIds.length} 个
+                  </td>
+                </tr>
+              );
+            })}
             {boundAgents.length === 0 && (
               <tr>
                 <td className="py-4 text-center text-slate-400" colSpan={3}>
@@ -198,30 +196,34 @@ export function GatewayPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void
             </tr>
           </thead>
           <tbody>
-            {(gw?.upstreams ?? []).map((u) => (
-              <tr key={u.id} data-testid={`upstream-${u.id}`} className={rowCls}>
-                <td className="py-2.5 font-medium text-slate-800">{u.id}</td>
-                <td className="py-2.5">
-                  <UpstreamBadge status={u.status} />
-                </td>
-                <td className="py-2.5 tabular-nums text-slate-600">{u.pid ?? '-'}</td>
-                <td className="py-2.5 tabular-nums text-slate-600">{u.toolCount}</td>
-                <td className="py-2.5 text-xs text-rose-600">{u.lastError ?? ''}</td>
-                <td className="py-2.5 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Btn small onClick={() => restart.mutate({ id: u.id, action: 'start' })}>
-                      启动
-                    </Btn>
-                    <Btn small onClick={() => restart.mutate({ id: u.id, action: 'restart' })}>
-                      重启
-                    </Btn>
-                    <Btn small onClick={() => restart.mutate({ id: u.id, action: 'stop' })}>
-                      停止
-                    </Btn>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {(gw?.upstreams ?? []).map((u) => {
+              // 按进程状态禁用无意义操作：ready 时无须再启动，已停止/出错时无从停止
+              const alive = u.status === 'ready' || u.status === 'starting' || u.status === 'backoff';
+              return (
+                <tr key={u.id} data-testid={`upstream-${u.id}`} className={rowCls}>
+                  <td className="py-2.5 font-medium text-slate-800">{u.id}</td>
+                  <td className="py-2.5">
+                    <UpstreamBadge status={u.status} />
+                  </td>
+                  <td className="py-2.5 tabular-nums text-slate-600">{u.pid ?? '-'}</td>
+                  <td className="py-2.5 tabular-nums text-slate-600">{u.toolCount}</td>
+                  <td className="py-2.5 text-xs text-rose-600">{u.lastError ?? ''}</td>
+                  <td className="py-2.5 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Btn small disabled={alive} onClick={() => restart.mutate({ id: u.id, action: 'start' })}>
+                        启动
+                      </Btn>
+                      <Btn small disabled={u.status !== 'ready'} onClick={() => restart.mutate({ id: u.id, action: 'restart' })}>
+                        重启
+                      </Btn>
+                      <Btn small disabled={!alive} onClick={() => restart.mutate({ id: u.id, action: 'stop' })}>
+                        停止
+                      </Btn>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {(gw?.upstreams ?? []).length === 0 && (
               <tr>
                 <td colSpan={6} className="py-6 text-center text-slate-400">

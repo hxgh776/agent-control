@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RegistrySearchResult, RegistrySuggestion } from '../api';
-import { Badge, Btn, Card, ErrorBanner, Icon, Pagination, Spinner, inputCls } from '../ui';
+import { Badge, Btn, Card, Icon, Pagination, Spinner, inputCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
 const PAGE_SIZE = 20;
@@ -37,11 +37,11 @@ function heatLabel(r: RegistrySuggestion): string | null {
 
 export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [source, setSource] = useState<SourceKey>('official');
   const [page, setPage] = useState(0);
-  const [error, setError] = useState<string | null>(null);
   const [addedId, setAddedId] = useState<string | null>(null);
 
   // 进入页面即浏览官方 registry 收录的 MCP；输入关键词后回车/点搜索切换为搜索模式
@@ -71,10 +71,10 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
     mutationFn: (s: RegistrySuggestion) => api.post<{ server: { id: string } }>('/api/servers', s.suggestion),
     onSuccess: (res) => {
       setAddedId(res.server.id);
-      setError(null);
+      toast.ok(`已添加 ${res.server.id}——在「MCP 管理」可编辑，在「Agent 分发」可启用到 agent`);
       void qc.invalidateQueries();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const list = results.data?.servers ?? [];
@@ -83,7 +83,6 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
 
   return (
     <div>
-      <ErrorBanner message={error} />
       <Card title="MCP 发现" subtitle="浏览官方 MCP Registry 与 Smithery 收录的 server；搜索结果按热度排序（npm=周下载量、Smithery=使用次数；官方源无热度数据按相关性）。官方源不可达时自动回退 npm。">
         <form
           className="flex gap-2"
@@ -94,10 +93,11 @@ export function DiscoveryPage({ onNavigate }: { onNavigate?: (tab: TabKey) => vo
         >
           <input
             data-testid="registry-query"
+            data-search-input
             className={`${inputCls} flex-1`}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="搜索 MCP server，例如：context7、filesystem、notion…（留空 = 浏览全部）"
+            placeholder="搜索 MCP server，例如：context7、filesystem、notion…（留空 = 浏览全部；按 / 聚焦）"
           />
           <Btn kind="primary" disabled={results.isFetching} onClick={() => search(input.trim())}>
             {results.isFetching ? '查询中…' : '搜索'}

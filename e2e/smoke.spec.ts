@@ -75,16 +75,18 @@ test('E-08 分组：新建分组、加入 MCP、关联 agent 后有效绑定生�
   await page.getByTestId('group-save').click();
   await expect(page.getByTestId('group-card-smoke-group')).toBeVisible();
 
-  // 通过分组卡片下拉关联 claude-code（第 2 个下拉是 agent 选择）
+  // 通过分组卡片的可搜索 AddMenu 关联 claude-code
   const card = page.getByTestId('group-card-smoke-group');
-  await card.locator('select').nth(1).selectOption('claude-code');
+  await card.getByTestId('group-agent-add-smoke-group').click();
+  await card.getByTestId('group-agent-option-claude-code').click();
   await expect(page.getByTestId('sync-agent-claude-code')).toContainText('smoke-group');
-  // 有效绑定 = 分组包含的 server
-  await expect(page.getByTestId('sync-agent-claude-code')).toContainText('smoke-fs');
+  // 有效绑定 = 分组包含的 server（绑定计数 0 → 1，具体写入由下方 dry-run 报告验证）
+  await expect(page.getByTestId('sync-agent-claude-code')).toContainText('共 1 个 MCP');
 
-  // 分发预览仍可用
+  // 分发预览仍可用，且 claude-code 的变更里出现组内 server
   await page.getByTestId('btn-dry-run').click();
   await expect(page.getByText('预览完成')).toBeVisible();
+  await expect(page.getByTestId('report-claude-code')).toContainText('smoke-fs');
 });
 
 test('E-09 Skill 管理页：空态 + 本地 ZIP 安装 + 启停矩阵 + 卸载', async ({ page }) => {
@@ -110,7 +112,9 @@ test('E-10 供应商页：预设创建 + 一键切换写 settings.json + 删除'
   await auth(page);
   await page.getByTestId('tab-providers').click();
   await page.getByTestId('btn-provider-new').click();
-  await page.getByTestId('provider-preset-select').selectOption('Kimi');
+  // 可搜索预设选择器：点开 → 选 Kimi
+  await page.getByTestId('provider-preset-select').click();
+  await page.getByTestId('provider-preset-option-Kimi').click();
   await page.getByTestId('provider-key-input').fill('sk-e2e-kimi');
   await page.getByTestId('provider-save').click();
   await expect(page.getByTestId('provider-card-kimi')).toBeVisible({ timeout: 15000 });

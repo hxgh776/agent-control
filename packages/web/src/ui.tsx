@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 // —— 设计系统：所有交互组件覆盖 hover / active / focus / disabled 状态 ——
@@ -159,6 +159,195 @@ export const codeChipCls =
 export const theadCls = 'border-b border-slate-200 text-left text-xs font-medium text-slate-400';
 export const rowCls = 'border-b border-slate-100 transition-colors hover:bg-slate-50/60';
 
+// —— 轻量 toast：操作反馈右上角弹出、自动消失——
+// 替代页面顶部常驻横幅：长页面底部操作时反馈依然可见，且不会永久占据版面
+
+export interface ToastApi {
+  ok: (text: string) => void;
+  err: (text: string) => void;
+}
+
+const ToastCtx = createContext<ToastApi | null>(null);
+
+export function useToast(): ToastApi {
+  const ctx = useContext(ToastCtx);
+  if (ctx === null) throw new Error('useToast 必须在 <ToastProvider> 内使用');
+  return ctx;
+}
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [items, setItems] = useState<{ id: number; kind: 'ok' | 'err'; text: string }[]>([]);
+  const nextId = useRef(0);
+  const remove = useCallback((id: number) => setItems((prev) => prev.filter((t) => t.id !== id)), []);
+  const push = useCallback(
+    (kind: 'ok' | 'err', text: string) => {
+      const id = ++nextId.current;
+      // 最多同时 4 条，避免连环操作把屏幕糊满
+      setItems((prev) => [...prev.slice(-3), { id, kind, text }]);
+      window.setTimeout(() => remove(id), kind === 'ok' ? 4500 : 7000);
+    },
+    [remove],
+  );
+  const api = useMemo<ToastApi>(() => ({ ok: (t) => push('ok', t), err: (t) => push('err', t) }), [push]);
+  return (
+    <ToastCtx.Provider value={api}>
+      {children}
+      <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-88 max-w-[calc(100vw-2rem)] flex-col gap-2">
+        {items.map((t) => (
+          <div
+            key={t.id}
+            role="status"
+            className={`pointer-events-auto flex animate-fade-up items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm shadow-pop ${
+              t.kind === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+          >
+            <Icon name={t.kind === 'ok' ? 'check' : 'alert'} className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 break-all leading-relaxed">{t.text}</span>
+            <button
+              onClick={() => remove(t.id)}
+              className="shrink-0 rounded p-0.5 opacity-40 transition hover:opacity-90"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+    </ToastCtx.Provider>
+  );
+}
+
+// —— 复制按钮：点击后短暂显示「已复制」——
+// 非安全上下文（局域网 IP 打开）时 navigator.clipboard 不存在，退回 execCommand
+// label 传空串 = 纯图标模式（卡片命令行等紧凑场景）
+
+export function CopyBtn({ text, label = '复制', className = '' }: { text: string; label?: string; className?: string }) {
+  const [done, setDone] = useState(false);
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    setDone(true);
+    window.setTimeout(() => setDone(false), 1600);
+  };
+  const iconOnly = label === '';
+  return (
+    <button
+      onClick={() => void copy()}
+      title="复制到剪贴板"
+      aria-label={iconOnly ? '复制' : undefined}
+      className={`inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border transition-all duration-150 active:scale-[0.97] ${
+        iconOnly ? 'w-7' : 'px-2'
+      } ${
+        done
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800'
+      } ${className}`}
+    >
+      {done ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0" aria-hidden>
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0" aria-hidden>
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+        </svg>
+      )}
+      {!iconOnly && <span className="text-xs font-medium">{done ? '已复制' : label}</span>}
+    </button>
+  );
+}
+
+// —— 可搜索的「添加」弹出选择器：替代单向原生 select——
+// 点选项即生效，支持输入筛选；默认向上弹出（页面卡片底部场景）
+
+export function AddMenu(props: {
+  label: string;
+  options: Array<{ value: string; label: string; hint?: string }>;
+  onPick: (value: string) => void;
+  testId?: string;
+  /** 选项按钮的 testid 生成器（e2e 用） */
+  optionTestId?: (value: string) => string | undefined;
+  direction?: 'up' | 'down';
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent): void => {
+      if (root.current !== null && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const kw = q.trim().toLowerCase();
+  const filtered = kw === '' ? props.options : props.options.filter((o) => o.label.toLowerCase().includes(kw));
+  const pos = props.direction === 'down' ? 'top-full mt-1.5' : 'bottom-full mb-1.5';
+  return (
+    <div ref={root} className="relative">
+      <button
+        data-testid={props.testId}
+        onClick={() => {
+          setOpen((v) => !v);
+          setQ('');
+        }}
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-slate-300 px-2 text-xs font-medium text-slate-500 transition-colors duration-150 hover:border-brand-400 hover:text-brand-600"
+      >
+        ＋ {props.label}
+      </button>
+      {open && (
+        <div className={`absolute left-0 z-30 flex w-64 animate-scale-in flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-pop ${pos}`}>
+          <input
+            autoFocus
+            className="w-full border-b border-slate-100 px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            placeholder="输入筛选…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-slate-400">没有匹配项</p>
+            ) : (
+              filtered.map((o) => (
+                <button
+                  key={o.value}
+                  data-testid={props.optionTestId?.(o.value)}
+                  onClick={() => {
+                    props.onPick(o.value);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm text-slate-700 transition-colors hover:bg-brand-50 hover:text-brand-700"
+                >
+                  <span className="min-w-0 truncate">{o.label}</span>
+                  {o.hint !== undefined && <span className="shrink-0 text-xs text-slate-400">{o.hint}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -200,11 +389,14 @@ export function Modal(props: {
   footer?: ReactNode;
   wide?: boolean;
 }) {
+  const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') props.onClose();
     };
     window.addEventListener('keydown', onKey);
+    // 打开弹窗自动聚焦第一个输入控件，省一次点击；无输入控件的确认框无副作用
+    panel.current?.querySelector<HTMLElement>('input, select, textarea')?.focus();
     return () => window.removeEventListener('keydown', onKey);
   }, [props.onClose]);
   return (
@@ -213,6 +405,7 @@ export function Modal(props: {
       onClick={props.onClose}
     >
       <div
+        ref={panel}
         className={`flex max-h-[85vh] w-full animate-scale-in flex-col rounded-2xl bg-white shadow-pop ${
           props.wide === true ? 'max-w-2xl' : 'max-w-lg'
         }`}

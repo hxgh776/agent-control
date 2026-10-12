@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { RuntimeTool, ServerDefDTO, ToolInfo } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Field, Icon, Modal, OkBanner, Spinner, Toggle, inputCls } from '../ui';
+import { Badge, Btn, Card, ConfirmDialog, CopyBtn, ErrorBanner, Field, Icon, Modal, Spinner, Toggle, inputCls, useToast } from '../ui';
+import type { TabKey } from '../App';
 
 interface FormState {
   id?: string;
@@ -54,13 +55,13 @@ function toForm(s: ServerDefDTO): FormState {
   };
 }
 
-export function ServersPage() {
+export function ServersPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
   const [form, setForm] = useState<FormState | null>(null);
   const [toolsFor, setToolsFor] = useState<ServerDefDTO | null>(null);
   const [removing, setRemoving] = useState<ServerDefDTO | null>(null);
+  const [filter, setFilter] = useState('');
 
   const servers = useQuery({
     queryKey: ['servers'],
@@ -110,58 +111,75 @@ export function ServersPage() {
         : api.post<{ server: ServerDefDTO }>('/api/servers', body);
     },
     onSuccess: () => {
-      setOk('已保存');
+      toast.ok('已保存');
       setForm(null);
-      setError(null);
       void qc.invalidateQueries();
     },
-    onError: (e) => {
-      setError(String((e as Error).message));
-      setOk(null);
-    },
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`/api/servers/${id}`),
     onSuccess: (_res, id) => {
       setRemoving(null);
-      setOk(`已删除 ${id}（agent 配置片段会在下次分发时清理）`);
+      toast.ok(`已删除 ${id}（agent 配置片段会在下次分发时清理）`);
       void qc.invalidateQueries();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const quickToggle = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/api/servers/${id}`, body),
     onSuccess: () => void qc.invalidateQueries(),
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const list = servers.data?.servers ?? [];
+  const kw = filter.trim().toLowerCase();
+  const shown =
+    kw === ''
+      ? list
+      : list.filter((s) => `${s.name} ${s.id} ${s.command ?? ''} ${(s.args ?? []).join(' ')} ${s.url ?? ''}`.toLowerCase().includes(kw));
 
   return (
     <div>
-      <ErrorBanner message={error} />
-      <OkBanner message={ok} />
-
       <Card
         title="MCP 管理"
-        subtitle={`共 ${list.length} 个 server；新增/编辑在弹窗中进行`}
+        subtitle={kw === '' ? `共 ${list.length} 个 server；新增/编辑在弹窗中进行` : `筛选出 ${shown.length} / ${list.length} 个`}
         actions={
-          <Btn kind="primary" testId="btn-add-server" onClick={() => setForm({ ...EMPTY })}>
-            添加 Server
-          </Btn>
+          <>
+            {list.length > 3 && (
+              <input
+                data-search-input
+                className="h-9 w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="筛选名称 / 命令…"
+              />
+            )}
+            <Btn kind="primary" testId="btn-add-server" onClick={() => setForm({ ...EMPTY })}>
+              添加 Server
+            </Btn>
+          </>
         }
       >
         {list.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 py-10 text-center">
             <Icon name="servers" className="h-8 w-8 text-slate-300" />
-            <p className="text-sm text-slate-400">还没有 server——去「MCP 发现」添加，或在「概览」导入现有配置。</p>
+            <p className="text-sm text-slate-400">还没有 server——从发现页一键收录，或导入现有 agent 配置。</p>
+            <div className="flex gap-2">
+              <Btn small kind="primary" onClick={() => onNavigate?.('discovery')}>
+                去「MCP 发现」
+              </Btn>
+              <Btn small onClick={() => onNavigate?.('status')}>
+                去「概览」导入
+              </Btn>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {list.map((s) => {
+            {shown.map((s) => {
               const warn = runtimeWarning(s);
               return (
                 <div
@@ -179,8 +197,18 @@ export function ServersPage() {
                     </div>
                     {s.enabled ? <Badge tone="green">启用</Badge> : <Badge tone="red">停用</Badge>}
                   </div>
-                  <div className="mb-2 truncate font-mono text-xs text-slate-500" title={s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}>
-                    {s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <span
+                      className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500"
+                      title={s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}
+                    >
+                      {s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : s.url}
+                    </span>
+                    <CopyBtn
+                      text={s.transport === 'stdio' ? `${s.command ?? ''} ${(s.args ?? []).join(' ')}` : (s.url ?? '')}
+                      label=""
+                      className="opacity-60 hover:opacity-100"
+                    />
                   </div>
                   {warn !== null && (
                     <div className="mb-2">
@@ -201,6 +229,11 @@ export function ServersPage() {
                 </div>
               );
             })}
+            {shown.length === 0 && (
+              <p className="col-span-full py-6 text-center text-sm text-slate-400">
+                没有匹配「{filter}」的 server。
+              </p>
+            )}
           </div>
         )}
       </Card>
@@ -310,7 +343,6 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
   const [debugTool, setDebugTool] = useState<string | null>(null);
   const [argsText, setArgsText] = useState('{}');
   const [result, setResult] = useState<string | null>(null);
-  const [invoking, setInvoking] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const tools = useQuery({
     queryKey: ['tools', server.id, refresh],
@@ -340,7 +372,7 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
     },
   });
 
-  const runDebug = async (): Promise<void> => {
+  const runDebug = (): void => {
     if (debugTool === null) return;
     let args: Record<string, unknown> = {};
     try {
@@ -349,9 +381,7 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
       setError('参数不是合法 JSON');
       return;
     }
-    setInvoking(true);
     invoke.mutate({ tool: debugTool, args });
-    setInvoking(false);
   };
 
   const overrides = server.toolOverrides ?? {};
@@ -431,10 +461,15 @@ function ToolsModal({ server, onClose }: { server: ServerDefDTO; onClose: () => 
             placeholder='{"message": "hello"}'
           />
           <div className="mt-2 flex items-center gap-2">
-            <Btn small kind="primary" disabled={invoking} onClick={() => void runDebug()}>
-              运行
+            <Btn small kind="primary" disabled={invoke.isPending} onClick={runDebug}>
+              {invoke.isPending ? (
+                <>
+                  <Spinner className="h-3.5 w-3.5" /> 调用中…
+                </>
+              ) : (
+                '运行'
+              )}
             </Btn>
-            {invoking && <span className="text-xs text-slate-400">调用中…</span>}
           </div>
           {result !== null && (
             <pre

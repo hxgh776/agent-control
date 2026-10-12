@@ -2,12 +2,11 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
-import { Badge, Btn, Card, Chip, ConfirmDialog, ErrorBanner, Field, Modal, OkBanner, inputCls, selectSmCls } from '../ui';
+import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, inputCls, useToast } from '../ui';
 
 export function SyncPage() {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
   const [report, setReport] = useState<SyncReport | null>(null);
   const [dryRun, setDryRun] = useState(false);
   // 冲突处置：resolutionKey → override | skip
@@ -33,11 +32,10 @@ export function SyncPage() {
   };
   const wrap = (p: { onSuccess?: () => void }) => ({
     onSuccess: (): void => {
-      setError(null);
       p.onSuccess?.();
       invalidate();
     },
-    onError: (e: Error): void => setError(String(e.message)),
+    onError: (e: Error): void => toast.err(String(e.message)),
   });
 
   const sync = useMutation({
@@ -45,17 +43,13 @@ export function SyncPage() {
     onSuccess: (res, isDryRun) => {
       setReport(res.report);
       setDryRun(isDryRun);
-      setOk(isDryRun ? '预览完成（未落盘）' : '同步完成');
-      setError(null);
+      toast.ok(isDryRun ? '预览完成（未落盘）' : '同步完成');
       if (!isDryRun) {
         setResolutions({});
         void qc.invalidateQueries();
       }
     },
-    onError: (e) => {
-      setError(String((e as Error).message));
-      setOk(null);
-    },
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const saveGroup = useMutation({
@@ -63,20 +57,20 @@ export function SyncPage() {
       g.id !== undefined ? api.patch(`/api/groups/${g.id}`, g) : api.post('/api/groups', g),
     onSuccess: () => {
       setEditing(null);
-      setOk('分组已保存（需要点「同步到所有 Agent」落盘）');
+      toast.ok('分组已保存（需要点「同步到所有 Agent」落盘）');
       invalidate();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const deleteGroupMut = useMutation({
     mutationFn: (id: string) => api.del(`/api/groups/${id}`),
     onSuccess: () => {
       setRemoving(null);
-      setOk('分组已删除（各 agent 在下次同步时收敛）');
+      toast.ok('分组已删除（各 agent 在下次同步时收敛）');
       invalidate();
     },
-    onError: (e) => setError(String((e as Error).message)),
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const groupServer = useMutation({
@@ -104,9 +98,6 @@ export function SyncPage() {
 
   return (
     <div>
-      <ErrorBanner message={error} />
-      <OkBanner message={ok} />
-
       <Card
         title="Agent 分发"
         subtitle="分组批量管理：把 MCP 加入分组、把 agent 关联到分组；也支持给单个 agent 直连添加 MCP。改动后点「同步到所有 Agent」写入各配置文件。"
@@ -153,9 +144,12 @@ export function SyncPage() {
         }
       >
         {groupList.length === 0 ? (
-          <p className="py-4 text-center text-sm text-slate-400">
-            还没有分组——点「新建分组」创建，例如「常用工具」「web 开发」。
-          </p>
+          <div className="flex flex-col items-center gap-3 py-6">
+            <p className="text-sm text-slate-400">还没有分组——创建一个，例如「常用工具」「web 开发」。</p>
+            <Btn small kind="primary" onClick={() => setEditing('new')}>
+              新建第一个分组
+            </Btn>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {groupList.map((g) => (
@@ -190,35 +184,24 @@ export function SyncPage() {
                   ))}
                   {g.agentTypes.length === 0 && <span className="text-xs text-slate-300">未关联</span>}
                 </div>
-                <div className="mt-auto flex gap-2 border-t border-slate-100 pt-2.5">
-                  <select
-                    className={selectSmCls}
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value !== '') groupServer.mutate({ groupId: g.id, serverId: e.target.value, on: true });
-                    }}
-                  >
-                    <option value="">添加 MCP 到分组…</option>
-                    {serverList
+                <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-2.5">
+                  <AddMenu
+                    label="添加 MCP"
+                    testId={`group-server-add-${g.id}`}
+                    options={serverList
                       .filter((s) => !g.serverIds.includes(s.id))
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                  </select>
-                  <select
-                    className={selectSmCls}
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value !== '') groupAgent.mutate({ groupId: g.id, agentType: e.target.value, on: true });
-                    }}
-                  >
-                    <option value="">关联 agent…</option>
-                    {agentList
+                      .map((s) => ({ value: s.id, label: s.name, hint: s.transport }))}
+                    onPick={(sid) => groupServer.mutate({ groupId: g.id, serverId: sid, on: true })}
+                  />
+                  <AddMenu
+                    label="关联 agent"
+                    testId={`group-agent-add-${g.id}`}
+                    optionTestId={(v) => `group-agent-option-${v}`}
+                    options={agentList
                       .filter((a) => !g.agentTypes.includes(a.agentType))
-                      .map((a) => (
-                        <option key={a.agentType} value={a.agentType}>{a.displayName}{a.detected ? '' : '（未装）'}</option>
-                      ))}
-                  </select>
+                      .map((a) => ({ value: a.agentType, label: a.displayName, hint: a.detected ? undefined : '未装' }))}
+                    onPick={(t) => groupAgent.mutate({ groupId: g.id, agentType: t, on: true })}
+                  />
                 </div>
               </div>
             ))}
@@ -255,35 +238,23 @@ export function SyncPage() {
                 ))}
                 {a.directServerIds.length === 0 && <span className="text-xs text-slate-300">无</span>}
               </div>
-              <div className="flex gap-2 border-t border-slate-100 pt-2.5">
-                <select
-                  className={selectSmCls}
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value !== '') groupAgent.mutate({ groupId: e.target.value, agentType: a.agentType, on: true });
-                  }}
-                >
-                  <option value="">加入分组…</option>
-                  {groupList
+              <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2.5">
+                <AddMenu
+                  label="加入分组"
+                  testId={`agent-group-add-${a.agentType}`}
+                  options={groupList
                     .filter((g) => !g.agentTypes.includes(a.agentType))
-                    .map((g) => (
-                      <option key={g.id} value={g.id}>{g.name}（{g.serverIds.length} 个 MCP）</option>
-                    ))}
-                </select>
-                <select
-                  className={selectSmCls}
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value !== '') bind.mutate({ agentType: a.agentType, serverId: e.target.value, on: true });
-                  }}
-                >
-                  <option value="">直连添加 MCP…</option>
-                  {serverList
+                    .map((g) => ({ value: g.id, label: g.name, hint: `${g.serverIds.length} 个 MCP` }))}
+                  onPick={(gid) => groupAgent.mutate({ groupId: gid, agentType: a.agentType, on: true })}
+                />
+                <AddMenu
+                  label="直连添加 MCP"
+                  testId={`agent-server-add-${a.agentType}`}
+                  options={serverList
                     .filter((s) => !a.directServerIds.includes(s.id))
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                </select>
+                    .map((s) => ({ value: s.id, label: s.name, hint: s.transport }))}
+                  onPick={(sid) => bind.mutate({ agentType: a.agentType, serverId: sid, on: true })}
+                />
               </div>
             </div>
           ))}

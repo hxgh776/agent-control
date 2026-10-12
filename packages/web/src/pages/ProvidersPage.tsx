@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { ProviderApp, ProviderProfileDTO, ProviderPresetDTO } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Modal, OkBanner, Spinner, inputCls, selectSmCls } from '../ui';
+import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, Modal, Spinner, AddMenu, inputCls, useToast } from '../ui';
 
 const APPS: Array<{ app: ProviderApp; label: string; hint: string }> = [
   { app: 'claude-code', label: 'Claude Code', hint: '写入 ~/.claude/settings.json（只动供应商键，hooks/permissions 不碰）' },
@@ -12,8 +12,7 @@ const APPS: Array<{ app: ProviderApp; label: string; hint: string }> = [
 
 export function ProvidersPage() {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
   const [app, setApp] = useState<ProviderApp>('claude-code');
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<ProviderProfileDTO | null>(null);
@@ -27,10 +26,6 @@ export function ProvidersPage() {
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ['providers'] });
   };
-  const fail = (e: Error): void => {
-    setError(String(e.message));
-    setOk(null);
-  };
 
   const currentApp = providers.data?.apps.find((a) => a.app === app);
 
@@ -40,23 +35,21 @@ export function ProvidersPage() {
         preserveCodexLogin: p.preserveCodexLogin,
       }),
     onSuccess: (res) => {
-      setOk(`已切换（写入 ${res.changed.length} 个文件）。Claude Code / Codex 需重启客户端生效。`);
-      setError(null);
+      toast.ok(`已切换（写入 ${res.changed.length} 个文件）。Claude Code / Codex 需重启客户端生效。`);
       setSwitchingNote(null);
       invalidate();
     },
-    onError: fail,
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   const doDelete = useMutation({
     mutationFn: (id: string) => api.del(`/api/providers/${id}`),
     onSuccess: () => {
-      setOk('已删除供应商档案');
-      setError(null);
+      toast.ok('已删除供应商档案');
       setRemoving(null);
       invalidate();
     },
-    onError: fail,
+    onError: (e) => toast.err(String((e as Error).message)),
   });
 
   return (
@@ -82,9 +75,6 @@ export function ProvidersPage() {
       </div>
 
       <p className="text-xs text-slate-500">{APPS.find((a) => a.app === app)!.hint}</p>
-
-      {error && <ErrorBanner message={error} />}
-      {ok && <OkBanner message={ok} />}
 
       {(currentApp?.profiles.length ?? 0) === 0 ? (
         <Card className="p-8 text-center text-sm text-slate-400">
@@ -139,7 +129,7 @@ export function ProvidersPage() {
           onClose={() => setCreating(false)}
           onSaved={(name) => {
             setCreating(false);
-            setOk(`已创建 ${name}`);
+            toast.ok(`已创建 ${name}`);
             invalidate();
           }}
         />
@@ -231,13 +221,15 @@ function CreateProviderModal({
     onError: (e) => setError(String((e as Error).message)),
   });
 
+  const preset = presets.data?.presets.find((p) => p.name === presetName);
+
   return (
     <Modal title="新建供应商" onClose={onClose} footer={null}>
       <div className="mb-4 flex gap-2">
-        <Btn small testId="provider-mode-preset" onClick={() => setMode('preset')}>
+        <Btn small testId="provider-mode-preset" onClick={() => setMode('preset')} kind={mode === 'preset' ? 'primary' : 'default'}>
           从预设
         </Btn>
-        <Btn small testId="provider-mode-custom" onClick={() => setMode('custom')}>
+        <Btn small testId="provider-mode-custom" onClick={() => setMode('custom')} kind={mode === 'custom' ? 'primary' : 'default'}>
           自定义
         </Btn>
       </div>
@@ -245,21 +237,35 @@ function CreateProviderModal({
       {mode === 'preset' ? (
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">预设（{presets.data?.presets.length ?? 0} 个）</label>
-            <select
-              data-testid="provider-preset-select"
-              className={selectSmCls}
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-            >
-              <option value="">选择预设…</option>
-              {(presets.data?.presets ?? []).map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                  {p.category ? `（${p.category}）` : ''}
-                </option>
-              ))}
-            </select>
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              预设（{presets.data?.presets.length ?? 0} 个，输入即可筛选）
+            </label>
+            {preset === undefined ? (
+              <AddMenu
+                label="选择预设…"
+                testId="provider-preset-select"
+                optionTestId={(v) => `provider-preset-option-${v}`}
+                direction="down"
+                options={(presets.data?.presets ?? []).map((p) => ({
+                  value: p.name,
+                  label: p.name,
+                  hint: p.isOfficial ? '官方' : p.category,
+                }))}
+                onPick={(v) => setPresetName(v)}
+              />
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm">
+                <span className="font-medium text-brand-800">{preset.name}</span>
+                {preset.isOfficial && <Badge tone="blue">官方</Badge>}
+                {preset.category && <Badge tone="gray">{preset.category}</Badge>}
+                <button
+                  className="ml-auto text-xs text-slate-400 transition-colors hover:text-slate-600"
+                  onClick={() => setPresetName('')}
+                >
+                  重选
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">API Key（占位键会被替换；留空则切换前需再编辑）</label>
@@ -269,6 +275,9 @@ function CreateProviderModal({
               className={inputCls}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && presetName !== '' && !fromPreset.isPending) fromPreset.mutate();
+              }}
               placeholder="sk-…"
             />
           </div>
@@ -297,7 +306,14 @@ function CreateProviderModal({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600">模型（可选）</label>
-            <input className={inputCls} value={customModel} onChange={(e) => setCustomModel(e.target.value)} />
+            <input
+              className={inputCls}
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && customName.trim() !== '' && customBaseUrl.trim() !== '' && !custom.isPending) custom.mutate();
+              }}
+            />
           </div>
           <Btn kind="primary" disabled={custom.isPending || customName.trim() === '' || customBaseUrl.trim() === ''} onClick={() => custom.mutate()}>
             {custom.isPending ? <Spinner className="h-4 w-4" /> : '创建'}

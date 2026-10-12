@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, getToken, setToken } from './api';
 import type { StatusInfo } from './api';
-import { BrandMark, Icon, Spinner } from './ui';
+import { BrandMark, Icon, Spinner, ToastProvider } from './ui';
 import { StatusPage } from './pages/StatusPage';
 import { ServersPage } from './pages/ServersPage';
 import { SyncPage } from './pages/SyncPage';
@@ -31,9 +31,46 @@ function initialTab(): TabKey {
 }
 
 export default function App() {
+  return (
+    <ToastProvider>
+      <AppShell />
+    </ToastProvider>
+  );
+}
+
+function AppShell() {
   const [authed, setAuthed] = useState(getToken() !== '');
   const [tab, setTab] = useState<TabKey>(initialTab);
   const queryClient = useQueryClient();
+
+  // 键盘直达：Alt+数字切页；/ 聚焦当前页搜索框（输入控件聚焦时不劫持）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t !== null && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+        return;
+      }
+      if (e.key === '/') {
+        const search = document.querySelector<HTMLElement>('[data-search-input]');
+        if (search !== null) {
+          e.preventDefault();
+          search.focus();
+        }
+        return;
+      }
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      const target = TABS[Number(e.key) - 1];
+      if (target !== undefined) {
+        e.preventDefault();
+        setTab(target.key);
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', target.key);
+        window.history.replaceState(null, '', url);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // 先探测令牌开关——默认关闭时直接进入，不显示令牌门
   const authInfo = useQuery({
@@ -113,13 +150,14 @@ export default function App() {
           </div>
         </div>
         <nav data-testid="sidebar" className="flex-1 space-y-1 overflow-y-auto p-3">
-          {TABS.map((t) => {
+          {TABS.map((t, i) => {
             const active = tab === t.key;
             return (
               <button
                 key={t.key}
                 data-testid={`tab-${t.key}`}
                 onClick={() => switchTab(t.key)}
+                title={`${t.desc}（快捷键 Alt+${i + 1}）`}
                 className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
                   active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                 }`}
@@ -146,6 +184,10 @@ export default function App() {
             </span>
             网关{gwRunning ? '运行中' : '已停止'}
           </div>
+          <div className="mt-1.5 px-1 text-[11px] leading-relaxed text-slate-600">
+            <kbd className="rounded bg-white/5 px-1 py-0.5 font-mono">Alt+1-8</kbd> 切页 ·{' '}
+            <kbd className="rounded bg-white/5 px-1 py-0.5 font-mono">/</kbd> 搜索
+          </div>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">
@@ -156,7 +198,7 @@ export default function App() {
             <p className="mt-1 text-sm text-slate-500">{current.desc}</p>
           </header>
           {tab === 'status' && <StatusPage onNavigate={switchTab} />}
-          {tab === 'servers' && <ServersPage />}
+          {tab === 'servers' && <ServersPage onNavigate={switchTab} />}
           {tab === 'discovery' && <DiscoveryPage onNavigate={switchTab} />}
           {tab === 'sync' && <SyncPage />}
           {tab === 'gateway' && <GatewayPage onNavigate={switchTab} />}
