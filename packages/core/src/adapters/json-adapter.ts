@@ -16,17 +16,17 @@ export interface JsonAdapterOptions {
   displayName: string;
   transports: TransportType[];
   paths: string[];
-  /** server 条目所在的容器键，如 mcpServers / mcp */
+  /** server 条目所在的容器键，如 mcpServers / mcp；支持点路径嵌套（如 ZCode 的 mcp.servers） */
   containerKey: string;
   normalize: (raw: unknown) => RawServerEntry | null;
   denormalize: (entry: RawServerEntry) => Record<string, unknown>;
 }
 
 /**
- * 通用 JSON 容器适配器：claude-code / cursor / trae 共用。
+ * 通用 JSON 容器适配器：claude-code / cursor / trae / zcode 共用。
  *
  * 写入流程（C6 安全写入）：
- * parse → 只改容器内管辖键 → 原子写 → 复读深比较校验 → 失败即回滚并抛错。
+ * parse → 只改容器内管辖键 → 原子写 → 复读深比较校验（管辖子树之外全等）→ 失败即回滚并抛错。
  */
 export class JsonAgentAdapter implements AgentAdapter {
   readonly type: AgentType;
@@ -34,6 +34,7 @@ export class JsonAgentAdapter implements AgentAdapter {
   readonly transports: TransportType[];
   readonly containerKey: string;
   private readonly paths: string[];
+  private readonly segments: string[];
   private readonly normalizeFn: (raw: unknown) => RawServerEntry | null;
   private readonly denormalizeFn: (entry: RawServerEntry) => Record<string, unknown>;
 
@@ -43,6 +44,7 @@ export class JsonAgentAdapter implements AgentAdapter {
     this.transports = opts.transports;
     this.paths = opts.paths;
     this.containerKey = opts.containerKey;
+    this.segments = opts.containerKey.split('.');
     this.normalizeFn = opts.normalize;
     this.denormalizeFn = opts.denormalize;
   }
@@ -59,14 +61,49 @@ export class JsonAgentAdapter implements AgentAdapter {
     return this.denormalizeFn(entry);
   }
 
+  /** 容器叶子所在的父对象与键名；中间层不是对象时返回 null（读视为无容器，写则需先创建） */
+  private locate(record: Record<string, unknown>): { parent: Record<string, unknown>; leaf: string } | null {
+    let cur = record;
+    for (let i = 0; i < this.segments.length - 1; i++) {
+      const next = cur[this.segments[i]!];
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) return null;
+      cur = next as Record<string, unknown>;
+    }
+    return { parent: cur, leaf: this.segments[this.segments.length - 1]! };
+  }
+
+  /** 逐层创建中间对象并返回容器叶子位置（仅写路径使用） */
+  private ensureLocate(record: Record<string, unknown>): { parent: Record<string, unknown>; leaf: string } {
+    let cur = record;
+    for (let i = 0; i < this.segments.length - 1; i++) {
+      const seg = this.segments[i]!;
+      const next = cur[seg];
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+        const fresh: Record<string, unknown> = {};
+        cur[seg] = fresh;
+        cur = fresh;
+      } else {
+        cur = next as Record<string, unknown>;
+      }
+    }
+    return { parent: cur, leaf: this.segments[this.segments.length - 1]! };
+  }
+
+  private containerOf(record: Record<string, unknown>): Record<string, unknown> | null {
+    const loc = this.locate(record);
+    if (!loc) return null;
+    const v = loc.parent[loc.leaf];
+    return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  }
+
   async read(file: string): Promise<Map<string, RawServerEntry>> {
     const text = await readTextIfExists(file);
     if (text === null) return new Map();
     const obj = this.parseOrThrow(text, file);
-    const container = obj[this.containerKey];
+    const container = this.containerOf(obj);
     const out = new Map<string, RawServerEntry>();
-    if (container === null || typeof container !== 'object') return out;
-    for (const [key, value] of Object.entries(container as Record<string, unknown>)) {
+    if (container === null) return out;
+    for (const [key, value] of Object.entries(container)) {
       const normalized = this.normalizeFn(value);
       if (normalized) out.set(key, normalized);
     }
@@ -80,13 +117,14 @@ export class JsonAgentAdapter implements AgentAdapter {
       throw new MalformedConfigError(file);
     }
     const record = obj as Record<string, unknown>;
-    const containerExisted = record[this.containerKey] !== undefined;
-    const containerValue = record[this.containerKey];
-    if (containerExisted && (containerValue === null || typeof containerValue !== 'object' || Array.isArray(containerValue))) {
+    const existingContainer = this.containerOf(record);
+    const leafValue = this.locate(record)?.parent[this.segments[this.segments.length - 1]!];
+    const containerExisted = leafValue !== undefined;
+    if (containerExisted && existingContainer === null) {
       throw new MalformedConfigError(file);
     }
-    const container: Record<string, unknown> = containerExisted
-      ? { ...(containerValue as Record<string, unknown>) }
+    const container: Record<string, unknown> = existingContainer !== null
+      ? { ...existingContainer }
       : {};
 
     const currentValues = new Map(Object.entries(container));
@@ -121,7 +159,8 @@ export class JsonAgentAdapter implements AgentAdapter {
       else delete container[m.key];
     }
     if (Object.keys(container).length > 0 || containerExisted) {
-      record[this.containerKey] = container;
+      const loc = this.ensureLocate(record);
+      loc.parent[loc.leaf] = container;
     }
 
     const newText = `${JSON.stringify(record, null, 2)}\n`;
@@ -129,7 +168,7 @@ export class JsonAgentAdapter implements AgentAdapter {
     if (options.journal) await options.journal.record(file, text, newText);
     await atomicWriteFile(file, newText);
 
-    // 复读校验：整体内容一致 + 非管辖顶层键与写前逐键深等
+    // 复读校验：整体内容一致 + 屏蔽管辖子树后与写前全等
     const reread = await readTextIfExists(file);
     let verified = false;
     if (reread !== null) {
@@ -137,12 +176,7 @@ export class JsonAgentAdapter implements AgentAdapter {
         const reparsed = JSON.parse(reread);
         if (JSON_EQUAL(reparsed, record)) {
           const snapshot = text === null ? {} : this.parseOrThrow(text, file);
-          const otherKeys = Object.keys(snapshot as Record<string, unknown>).filter(
-            (k) => k !== this.containerKey,
-          );
-          verified = otherKeys.every((k) =>
-            JSON_EQUAL((snapshot as Record<string, unknown>)[k], (reparsed as Record<string, unknown>)[k]),
-          );
+          verified = JSON_EQUAL(this.maskManaged(snapshot as Record<string, unknown>), this.maskManaged(reparsed as Record<string, unknown>));
         }
       } catch {
         verified = false;
@@ -160,11 +194,19 @@ export class JsonAgentAdapter implements AgentAdapter {
       changes,
       keyStates: finalizeKeyStates(
         plan,
-        new Map(Object.entries((record[this.containerKey] as Record<string, unknown>) ?? {})),
+        new Map(Object.entries(this.containerOf(record) ?? {})),
         options.previous,
       ),
       conflicts,
     };
+  }
+
+  /** 深拷贝并移除管辖容器子树——剩余部分必须与写前全等 */
+  private maskManaged(record: Record<string, unknown>): Record<string, unknown> {
+    const clone = JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
+    const loc = this.locate(clone);
+    if (loc) delete loc.parent[loc.leaf];
+    return clone;
   }
 
   private parseOrThrow(text: string, file: string): Record<string, unknown> {
@@ -317,6 +359,40 @@ export function denormalizeGeminiStyle(entry: RawServerEntry): Record<string, un
     return clean({ url: entry.url, headers: entry.headers });
   }
   return clean({ httpUrl: entry.url, headers: entry.headers });
+}
+
+/** WorkBuddy 风格：{ type:'streamableHttp'|'sse', url, timeout?, disabled? } 或 { command,args,env } */
+export function normalizeWorkbuddy(raw: unknown): RawServerEntry | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const type = typeof r['type'] === 'string' ? (r['type'] as string) : undefined;
+  if (typeof r['url'] === 'string') {
+    return {
+      transport: type === 'sse' ? 'sse' : 'http',
+      url: r['url'],
+      headers: toStringRecord(r['headers']),
+    };
+  }
+  if (typeof r['command'] === 'string') {
+    return {
+      transport: 'stdio',
+      command: r['command'],
+      args: toStringArray(r['args']),
+      env: toStringRecord(r['env']),
+    };
+  }
+  return null;
+}
+
+export function denormalizeWorkbuddy(entry: RawServerEntry): Record<string, unknown> {
+  if (entry.transport === 'stdio') {
+    return clean({ command: entry.command, args: entry.args, env: entry.env });
+  }
+  return clean({
+    type: entry.transport === 'sse' ? 'sse' : 'streamableHttp',
+    url: entry.url,
+    headers: entry.headers,
+  });
 }
 
 function toStringArray(v: unknown): string[] | undefined {

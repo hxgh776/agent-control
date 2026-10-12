@@ -48,9 +48,9 @@ describe('M3.5 Gemini CLI 适配器', () => {
     expect(normalizeGeminiStyle({ url: 'https://y/sse' })).toEqual(sse);
   });
 
-  it('注册表含 8 个 agent', () => {
+  it('注册表含 10 个 agent', () => {
     expect(AGENT_LIST.map((a) => a.type).sort()).toEqual([
-      'claude-code', 'claude-desktop', 'codex', 'cursor', 'gemini-cli', 'opencode', 'trae', 'windsurf',
+      'claude-code', 'claude-desktop', 'codex', 'cursor', 'gemini-cli', 'opencode', 'trae', 'windsurf', 'workbuddy', 'zcode',
     ]);
   });
 });

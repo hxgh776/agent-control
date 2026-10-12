@@ -6,10 +6,12 @@ import {
   denormalizeClaudeStyle,
   denormalizeOpencode,
   denormalizeUrlOrCommand,
+  denormalizeWorkbuddy,
   normalizeClaudeStyle,
   normalizeGeminiStyle,
   normalizeOpencode,
   normalizeUrlOrCommand,
+  normalizeWorkbuddy,
   denormalizeGeminiStyle,
 } from './adapters/json-adapter.js';
 import type { AgentAdapter } from './adapters/types.js';
@@ -121,6 +123,29 @@ export function makeAgents(baseDir?: string): Record<AgentType, AgentDefinition>
     denormalize: denormalizeGeminiStyle,
   });
 
+  // ZCode：用户级 MCP 在 ~/.zcode/cli/config.json 的 mcp.servers（嵌套容器键）。
+  // schema 严格——未知键会被客户端丢弃，因此写入只用官方字段（command/args/cwd/env/headers 等）。
+  const zcode = new JsonAgentAdapter({
+    type: 'zcode',
+    displayName: 'ZCode',
+    transports: ['stdio', 'http', 'sse'],
+    paths: [p('.zcode', 'cli', 'config.json')],
+    containerKey: 'mcp.servers',
+    normalize: normalizeClaudeStyle,
+    denormalize: denormalizeClaudeStyle,
+  });
+
+  // WorkBuddy：~/.workbuddy/mcp.json，顶层 mcpServers；远程条目 type 为 streamableHttp
+  const workbuddy = new JsonAgentAdapter({
+    type: 'workbuddy',
+    displayName: 'WorkBuddy',
+    transports: ['stdio', 'http'],
+    paths: [p('.workbuddy', 'mcp.json')],
+    containerKey: 'mcpServers',
+    normalize: normalizeWorkbuddy,
+    denormalize: denormalizeWorkbuddy,
+  });
+
   return {
     'claude-code': { type: 'claude-code', displayName: 'Claude Code', adapter: claudeCode, installProbe: { commands: ['claude'], program: [], data: [] } },
     codex: { type: 'codex', displayName: 'Codex CLI', adapter: codex, installProbe: { commands: ['codex'], program: [], data: [] } },
@@ -166,6 +191,22 @@ export function makeAgents(baseDir?: string): Record<AgentType, AgentDefinition>
       },
     },
     'gemini-cli': { type: 'gemini-cli', displayName: 'Gemini CLI', adapter: geminiCli, installProbe: { commands: ['gemini'], program: [], data: [] } },
+    zcode: {
+      type: 'zcode', displayName: 'ZCode', adapter: zcode,
+      installProbe: {
+        commands: ['zcode'],
+        program: mac ? ['/Applications/ZCode.app'] : win ? [path.join(localAppData, 'Programs', 'zcode', 'ZCode.exe')] : [],
+        data: [p('.zcode')],
+      },
+    },
+    workbuddy: {
+      type: 'workbuddy', displayName: 'WorkBuddy', adapter: workbuddy,
+      installProbe: {
+        commands: ['workbuddy'],
+        program: win ? [path.join(localAppData, 'Programs', 'workbuddy', 'WorkBuddy.exe')] : [],
+        data: [p('.workbuddy'), path.join(localAppData, 'WorkBuddy')],
+      },
+    },
   };
 }
 

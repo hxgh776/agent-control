@@ -9,6 +9,8 @@ export const AGENT_TYPES = [
   'claude-desktop',
   'windsurf',
   'gemini-cli',
+  'zcode',
+  'workbuddy',
 ] as const;
 export type AgentType = (typeof AGENT_TYPES)[number];
 

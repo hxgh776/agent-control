@@ -15,7 +15,7 @@
 
 > Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。
 
-支持 **8 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI
+支持 **10 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI · ZCode · WorkBuddy
 
 ## ✨ 界面一览
 
@@ -98,6 +98,8 @@ actl bridge <url> --token xxx   # stdio 反向桥（供 stdio agent 连远程端
 | Claude Desktop | 分平台 `claude_desktop_config.json` | ✅ 原生 |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | ✅ 原生 |
 | Gemini CLI | `~/.gemini/settings.json` | ✅ 原生 |
+| ZCode | `~/.zcode/cli/config.json`（`mcp.servers`） | ✅ 原生 |
+| WorkBuddy | `~/.workbuddy/mcp.json`（`type: streamableHttp`） | ✅ 原生 |
 
 > 写入保真承诺：只动 MCP 配置键，写入前自动备份、原子写入、写后校验；你在配置里的手工修改会被检测并交给你决定，绝不静默覆盖。
 

@@ -55,8 +55,7 @@ async function writeAgentFile(relSegments: string[], content: string): Promise<v
 }
 
 describe('detect + import (U-IM / C1 C5)', () => {
-  it('探测：只认存在配置文件的 agent（安装探测关闭时）', async () => {
-    await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
+  it('探测：只认存在配置文件的 agent（安装探测关闭时）', async () => {    await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
     await fs.writeFile(
       path.join(sandbox, '.cursor', 'mcp.json'),
       JSON.stringify({ mcpServers: { ctx: { command: 'node', args: ['ctx.js'] } } }),
@@ -274,5 +273,76 @@ describe('sync engine (I-SY)', () => {
     const files = await fs.readdir(backupDir);
     expect(files.length).toBe(1);
     expect(files[0]).toMatch(/claude\.json$/);
+  });
+});
+
+describe('ZCode 嵌套容器 + WorkBuddy 适配（M3.7）', () => {
+  it('ZCode：mcp.servers 嵌套读写，管辖子树之外的键原样保留', async () => {
+    await writeAgentFile(
+      ['.zcode', 'cli', 'config.json'],
+      JSON.stringify({
+        mcp: {
+          servers: { 'user-own': { type: 'http', url: 'https://example.com/mcp' } },
+          otherSetting: { keep: true },
+        },
+        plugins: { 'some-plugin': true },
+        hooks: { enabled: false },
+      }),
+    );
+    // 导入预览能读到嵌套容器里的条目
+    const groups = await importPreview(agents);
+    const fromZcode = groups.flatMap((g) => g.candidates).filter((c) => c.agentType === 'zcode');
+    expect(fromZcode).toHaveLength(1);
+
+    // 分发一个 stdio server 到 zcode
+    addStdioServer('filesystem', 'Filesystem');
+    setBinding(config, 'filesystem', 'zcode');
+    await engine.sync(config);
+
+    const after = JSON.parse(await fs.readFile(path.join(sandbox, '.zcode', 'cli', 'config.json'), 'utf8'));
+    // 只写官方字段（ZCode schema 严格，未知键会被客户端丢弃）
+    expect(after.mcp.servers['filesystem']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem'],
+      env: { TOKEN: 'secret-filesystem' },
+    });
+    // 用户原有条目 + 嵌套兄弟键 + 顶层其他键全部保留
+    expect(after.mcp.servers['user-own']).toEqual({ type: 'http', url: 'https://example.com/mcp' });
+    expect(after.mcp.otherSetting).toEqual({ keep: true });
+    expect(after.plugins).toEqual({ 'some-plugin': true });
+    expect(after.hooks).toEqual({ enabled: false });
+  });
+
+  it('WorkBuddy：streamableHttp 归一化为 http；未管辖条目的 timeout/disabled 保留', async () => {
+    await writeAgentFile(
+      ['.workbuddy', 'mcp.json'],
+      JSON.stringify({
+        mcpServers: {
+          remote: { type: 'streamableHttp', url: 'https://light.example/mcp', timeout: 30000, disabled: false },
+        },
+      }),
+    );
+    const detections = await detectAgents(agents, { probeInstall: false });
+    const wb = detections.find((d) => d.agentType === 'workbuddy')!;
+    expect(wb.configExists).toBe(true);
+
+    addStdioServer('filesystem', 'Filesystem');
+    setBinding(config, 'filesystem', 'workbuddy');
+    await engine.sync(config);
+
+    const after = JSON.parse(await fs.readFile(path.join(sandbox, '.workbuddy', 'mcp.json'), 'utf8'));
+    // 新写入的条目用 WorkBuddy 的 type 命名
+    expect(after.mcpServers['filesystem']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem'],
+      env: { TOKEN: 'secret-filesystem' },
+    });
+    // 未管辖的既有条目原样保留（含 WorkBuddy 特有字段）
+    expect(after.mcpServers['remote']).toEqual({
+      type: 'streamableHttp',
+      url: 'https://light.example/mcp',
+      timeout: 30000,
+      disabled: false,
+    });
   });
 });

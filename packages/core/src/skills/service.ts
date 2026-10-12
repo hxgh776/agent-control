@@ -572,7 +572,8 @@ async function copyDir(src: string, dest: string): Promise<void> {
   await fs.cp(src, dest, { recursive: true });
 }
 
-/** copy → 同父目录 staging → rename，保证目标替换的原子性（skill.rs:2691-2730） */
+/** copy → 同父目录 staging → rename，保证目标替换的原子性（skill.rs:2691-2730）。
+ * Windows 上 rename 可能被杀软/索引器短暂占用目标而抛 EPERM/EBUSY——指数退避重试（与 atomicWriteFile 同策略）。 */
 async function replaceWithCopy(src: string, dest: string): Promise<void> {
   await fs.mkdir(path.dirname(dest), { recursive: true });
   const staging = path.join(
@@ -582,7 +583,20 @@ async function replaceWithCopy(src: string, dest: string): Promise<void> {
   try {
     await fs.cp(src, staging, { recursive: true });
     await fs.rm(dest, { recursive: true, force: true });
-    await fs.rename(staging, dest);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await fs.rename(staging, dest);
+        return;
+      } catch (err) {
+        lastError = err;
+        const code = (err as NodeJS.ErrnoException).code;
+        const transient = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+        if (!transient || attempt === 4) break;
+        await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
+      }
+    }
+    throw lastError;
   } catch (err) {
     await fs.rm(staging, { recursive: true, force: true }).catch(() => {});
     throw err;
