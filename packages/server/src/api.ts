@@ -26,8 +26,7 @@ import {
   presetEnv,
 } from '@agent-control/core';
 import type { ProviderApp } from '@agent-control/core';
-import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@agent-control/core';
-import { z } from 'zod';
+import type { AgentType, ServerDef, SkillAgentType, UpsertServerInput } from '@agent-control/core';import { z } from 'zod';
 import type { Daemon } from './daemon.js';
 import { sendError, sendJson } from './http-util.js';
 import type { Router } from './router.js';
@@ -639,7 +638,6 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     presetName: z.string().min(1),
     apiKey: z.string().optional(),
   });
-  const providerSwitchSchema = z.object({ preserveCodexLogin: z.boolean().optional() });
 
   router.get('/api/providers', async (ctx) => {
     sendJson(ctx.res, 200, { apps: daemon.providers.list() });

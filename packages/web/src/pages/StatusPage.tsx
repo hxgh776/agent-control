@@ -5,13 +5,24 @@ import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
 import { Badge, Btn, Card, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
 
-/** 探测结果徽章：强证据（命令/程序目录）→「已装」；仅配置/数据残留 →「仅数据」；一无所获 →「未发现」 */
+/** 探测结果徽章：强证据（命令/默认安装位置）→「已装」；仅配置/数据残留 →「仅数据」；一无所获 →「未发现」 */
 function DetectBadge({ agent }: { agent: AgentInfo }) {
   const tier = agentInstallTier(agent);
-  if (tier === 'installed') return <Badge tone="green">已装</Badge>;
+  if (tier === 'installed') {
+    const strong = agent.installEvidence.find((e) => e.kind !== 'data')!;
+    const tip =
+      strong.kind === 'binary'
+        ? `在 PATH 上发现命令：${strong.path}`
+        : `发现默认安装位置：${strong.path}`;
+    return (
+      <span title={tip}>
+        <Badge tone="green">已装</Badge>
+      </span>
+    );
+  }
   if (tier === 'data-only') {
     return (
-      <span title="未发现程序安装，仅检测到配置或数据残留">
+      <span title="默认位置未发现程序安装，仅检测到配置或数据残留；不影响对该 agent 的配置分发">
         <Badge tone="amber">仅数据</Badge>
       </span>
     );

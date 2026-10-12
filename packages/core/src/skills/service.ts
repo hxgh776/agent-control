@@ -419,7 +419,6 @@ export class SkillsService {
     const failures: SkillRepoFailure[] = [];
     for (const [key, rows] of byRepo) {
       const at = key.lastIndexOf('@');
-      const repoCoord = key.slice(0, at);
       const branch = key.slice(at + 1);
       let tmpRoot: string | null = null;
       try {

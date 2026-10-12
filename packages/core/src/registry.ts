@@ -220,9 +220,14 @@ function cleanUndefined<T extends object>(input: T): Partial<T> {
 
 // —— Agent 探测（C1） ——
 
+export interface DetectOptions {
+  /** 是否探测安装证据（测试沙箱关闭，避免命中真实机器） */
+  probeInstall?: boolean;
+}
+
 export async function detectAgents(
   agents: Record<AgentType, { displayName: string; adapter: AgentAdapter; installProbe?: InstallProbe }> = AGENTS,
-  opts: { probeInstall?: boolean } = {},
+  opts: DetectOptions = {},
 ): Promise<AgentDetection[]> {
   const probe = opts.probeInstall !== false;
   const out: AgentDetection[] = [];
@@ -249,7 +254,7 @@ export async function detectAgents(
   return out;
 }
 
-/** 安装证据探测：命令查 PATH（where/which），目录直接存在性检查，全部并行。 */
+/** 安装证据探测：命令查 PATH（where/which），默认安装位置/数据目录做存在性检查，全部并行。 */
 async function probeInstall(p: InstallProbe | undefined): Promise<InstallEvidence[]> {
   if (!p) return [];
   const [binaries, programs, datas] = await Promise.all([

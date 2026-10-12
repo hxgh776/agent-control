@@ -285,7 +285,7 @@ describe('U-SK-06 4 级解析', () => {
 // —— 辅助：无依赖最小 ZIP 构造（stored）+ fetch stub ——
 
 function crc32(buf: Buffer): number {
-  let table = crcTable;
+  const table = crcTable;
   let c = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
     c = (c >>> 8) ^ table[(c ^ buf[i]!) & 0xff]!;

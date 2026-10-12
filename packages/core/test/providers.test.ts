@@ -7,7 +7,6 @@ import { ProvidersService } from '../src/providers/service.js';
 import {
   CLAUDE_EXCLUSIVE_ENV,
   CLAUDE_FLOOR_TOP,
-  claudeExclusiveEnv,
   claudeFloorEnv,
   claudeFloorTop,
   geminiFloorEnv,

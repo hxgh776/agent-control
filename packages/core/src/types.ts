@@ -100,7 +100,8 @@ export interface ManagerConfig {
 }
 
 export interface InstallEvidence {
-  /** binary = PATH 上的命令；program = 程序安装位置；data = 用户数据目录（卸载后可能残留，弱信号） */
+  /** binary = PATH 上的命令；program = 默认安装位置；data = 用户数据目录（卸载后可能残留，弱信号）。
+   * 安装位置仅用于「已装/未装」展示，不参与任何读写——配置/skills 全部走主目录标准路径。 */
   kind: 'binary' | 'program' | 'data';
   path: string;
 }

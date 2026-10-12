@@ -16,7 +16,8 @@ import type { AgentAdapter } from './adapters/types.js';
 import type { AgentType } from './types.js';
 
 /** 安装证据探测：配置文件之外判断「装没装」的依据。
- * program（可执行/.app）与 binary（PATH 命令）是强信号；data（用户数据目录）卸载后可能残留，是弱信号。 */
+ * program（可执行/.app）与 binary（PATH 命令）是强信号；data（用户数据目录）卸载后可能残留，是弱信号。
+ * 只探默认位置与 PATH——安装位置不参与任何功能，不值得为自定义目录维护注册表扫描。 */
 export interface InstallProbe {
   commands: string[];
   program: string[];

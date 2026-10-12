@@ -1,4 +1,3 @@
-import type { ProviderPayload } from './types.js';
 
 /**
  * Codex auth.json 四去向计划（自 cc-switch codex_login.rs:212-321 的 plan() 移植，

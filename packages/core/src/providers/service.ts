@@ -7,7 +7,7 @@ import { firstWriteBackup, PublicationJournal } from '../write-engine.js';
 import { skillSlug } from '../skills/service.js';
 import { projectClaudeSettings } from './claude.js';
 import { extractApiKey, planAuth, type LoginStash } from './codex-auth.js';
-import { projectCodexToml, tomlTableOf } from './codex.js';
+import { projectCodexToml } from './codex.js';
 import { projectGeminiEnv, projectGeminiSettings } from './gemini.js';
 import type { ProviderApp, ProviderPayload, ProviderPresetRow, ProviderProfile } from './types.js';
 import { PROVIDER_APPS } from './types.js';
@@ -255,13 +255,6 @@ export class ProvidersService {
   }
 }
 
-function hasThirdPartyRoute(payload: ProviderPayload): boolean {
-  if (!payload.configToml) return false;
-  const doc = tomlTableOf(payload.configToml, 'preset-template');
-  const providers = doc['model_providers'];
-  if (providers === null || typeof providers !== 'object') return false;
-  return Object.keys(providers as Record<string, unknown>).length > 0;
-}
 
 /** 解析失败返回 null（由调用方决定中止或跳过）；解析成功但不是对象视为失败 */
 function parseJsonOrNull(text: string): Record<string, unknown> | null {

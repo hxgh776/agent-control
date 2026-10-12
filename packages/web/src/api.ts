@@ -46,7 +46,7 @@ async function request<T>(method: string, pathname: string, body?: unknown): Pro
 export const api = {
   get: <T>(p: string) => request<T>('GET', p),
   post: <T>(p: string, body?: unknown) => request<T>('POST', p, body),
-  put: <T>(p: string) => request<T>('PUT', p),
+  put: <T>(p: string, body?: unknown) => request<T>('PUT', p, body),
   patch: <T>(p: string, body: unknown) => request<T>('PATCH', p, body),
   del: <T>(p: string) => request<T>('DELETE', p),
 };
@@ -94,7 +94,7 @@ export interface AgentInfo {
   syncState: { keyStates: { key: string; hash: string }[]; updatedAt: string } | null;
 }
 
-/** 安装判定分级：installed = 命令/程序目录命中（强证据）；data-only = 仅配置或用户数据残留；none = 一无所获 */
+/** 安装判定分级：installed = 命令/默认安装位置命中（强证据）；data-only = 仅配置或用户数据残留；none = 一无所获 */
 export function agentInstallTier(a: Pick<AgentInfo, 'detected' | 'installEvidence'>): 'installed' | 'data-only' | 'none' {
   if (a.installEvidence.some((e) => e.kind === 'binary' || e.kind === 'program')) return 'installed';
   return a.detected ? 'data-only' : 'none';
