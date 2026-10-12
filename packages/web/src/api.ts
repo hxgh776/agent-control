@@ -136,6 +136,10 @@ export interface RegistrySuggestion {
     url?: string;
     gatewayMode: boolean;
   } | null;
+  /** 结果来源（回退时可能与所选源不同） */
+  source?: 'official' | 'smithery' | 'npm';
+  /** 热度信号：npm=周下载量，Smithery=使用次数 */
+  useCount?: number;
 }
 
 export interface RegistrySearchResult {

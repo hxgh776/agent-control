@@ -19,7 +19,7 @@ const TABS = [
   { key: 'sync', label: 'Agent 分发', icon: 'sync', desc: '分组管理，一次配置同步到 Claude Code、Cursor 等 agent' },
   { key: 'gateway', label: '聚合网关', icon: 'gateway', desc: '多个 MCP 聚合为一个端点、访问令牌与上游进程' },
   { key: 'logs', label: '调用日志', icon: 'logs', desc: '网关调用记录与上游进程输出' },
-  { key: 'skills', label: 'Skill 管理', icon: 'skills', desc: '安装 / 启停 / 更新 SKILL.md 技能，分发到支持的 agent' },
+  { key: 'skills', label: 'Skill 管理', icon: 'skills', desc: '安装 / 启停 / 更新 SKILL.md 技能，分发到 8 个 agent（Claude Code / Codex / Gemini CLI / OpenCode / ZCode / Cursor / Windsurf / Trae）' },
   { key: 'providers', label: '供应商', icon: 'providers', desc: 'Claude Code / Codex / Gemini 供应商一键切换' },
 ] as const;
 

@@ -8,6 +8,7 @@ import { SkillsService, sanitizeInstallName, resolveSkillSourceDir, scanSkillDir
 import { computeDirHash } from '../src/skills/hash.js';
 import { safeExtractPath } from '../src/skills/zip.js';
 import { SkillInputError, searchSkillsSh, validateRepoRef, githubArchiveUrl } from '../src/skills/skills-sh.js';
+import { SKILL_AGENT_LIST } from '../src/skills/types.js';
 import type { ManagerConfig } from '../src/types.js';
 
 let sandbox: string;
@@ -94,8 +95,8 @@ describe('U-SK-03 安装/投影/卸载（本地 ZIP 全链路）', () => {
     expect(row.source).toBe('local');
     const ssot = path.join(store.homeDir, 'skills', 'demo-skill');
     expect(await computeDirHash(ssot)).toBe(row.contentHash);
-    // 关联表：4 个 skill agent 全部默认关闭
-    expect(config.skillTargets.filter((t) => t.skillId === row.id)).toHaveLength(4);
+    // 关联表：全部 skill agent 默认关闭
+    expect(config.skillTargets.filter((t) => t.skillId === row.id)).toHaveLength(SKILL_AGENT_LIST.length);
     expect(config.skillTargets.every((t) => !t.enabled)).toBe(true);
 
     await service.toggle(row.id, 'claude-code', true);
@@ -117,6 +118,20 @@ describe('U-SK-03 安装/投影/卸载（本地 ZIP 全链路）', () => {
     expect(config.skills).toHaveLength(0);
     expect(config.skillTargets).toHaveLength(0);
     await expect(fs.access(ssot)).rejects.toThrow();
+  });
+
+  it('安装时 enableFor：投影的同时点亮启用位（UI 一致性）', async () => {
+    const row = await service.installFromLocalZip(await readFixture('demo-skill.zip'), {
+      enableFor: ['claude-code', 'zcode'],
+    });
+    const targets = config.skillTargets.filter((t) => t.skillId === row.id);
+    expect(targets.find((t) => t.agentType === 'claude-code')!.enabled).toBe(true);
+    expect(targets.find((t) => t.agentType === 'zcode')!.enabled).toBe(true);
+    expect(targets.find((t) => t.agentType === 'cursor')!.enabled).toBe(false);
+    const listed = await service.list();
+    const byAgent = new Map(listed[0]!.targets.map((t) => [t.agentType, t]));
+    expect(byAgent.get('claude-code')).toMatchObject({ enabled: true, projected: true, modified: false });
+    expect(byAgent.get('zcode')).toMatchObject({ enabled: true, projected: true, modified: false });
   });
 
   it('用户改过的目标目录：启用拒绝覆盖，停用原样保留', async () => {

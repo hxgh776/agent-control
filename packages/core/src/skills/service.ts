@@ -352,6 +352,9 @@ export class SkillsService {
     }
     for (const agentType of input.enableFor) {
       await this.enableTarget(row, agentType);
+      // 投影即启用：把关联位一并置 true，否则 UI 显示未启用（与 toggle(true) 语义对齐）
+      const target = config.skillTargets.find((x) => x.skillId === row.id && x.agentType === agentType);
+      if (target) target.enabled = true;
     }
     await this.opts.saveConfig();
     return row;
@@ -362,8 +365,12 @@ export class SkillsService {
   async toggle(skillId: string, agentType: SkillAgentType, enabled: boolean): Promise<{ preserved?: string }> {
     const config = this.opts.getConfig();
     const row = this.skillRow(skillId);
-    const target = config.skillTargets.find((t) => t.skillId === skillId && t.agentType === agentType);
-    if (!target) throw new SkillInputError(`skill ${skillId} 不支持 agent ${agentType}`);
+    // 旧数据可能没有新增 agent 的关联行（skill agent 名单后来扩充）——懒建，而非报错
+    let target = config.skillTargets.find((t) => t.skillId === skillId && t.agentType === agentType);
+    if (!target) {
+      target = { skillId, agentType, enabled: false };
+      config.skillTargets.push(target);
+    }
     if (target.enabled === enabled) return {};
     let preserved: string | undefined;
     if (enabled) {

@@ -1,11 +1,17 @@
 import type { AgentType } from '../types.js';
 
-/** 支持 Skill 目录投影的 agent 及其 skills 目录（相对用户主目录/沙箱根） */
+/** 支持 Skill 目录投影的 agent 及其 skills 目录（相对用户主目录/沙箱根）。
+ * 均为 SKILL.md 开放标准的落地目录：Claude Code/Codex/Gemini CLI/OpenCode/ZCode 官方文档，
+ * Cursor（~/.cursor/skills）、Windsurf、Trae 按 agentskills.io 生态约定。 */
 export const SKILL_AGENT_DIRS: Partial<Record<AgentType, string[]>> = {
   'claude-code': ['.claude', 'skills'],
   codex: ['.codex', 'skills'],
   'gemini-cli': ['.gemini', 'skills'],
   opencode: ['.config', 'opencode', 'skills'],
+  zcode: ['.zcode', 'skills'],
+  cursor: ['.cursor', 'skills'],
+  windsurf: ['.windsurf', 'skills'],
+  trae: ['.trae', 'skills'],
 };
 
 export type SkillAgentType = keyof typeof SKILL_AGENT_DIRS & AgentType;

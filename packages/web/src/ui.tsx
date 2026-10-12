@@ -42,6 +42,7 @@ export function Btn(props: {
   testId?: string;
   small?: boolean;
   title?: string;
+  className?: string;
 }) {
   const kind =
     props.kind === 'primary'
@@ -55,7 +56,7 @@ export function Btn(props: {
       onClick={props.onClick}
       disabled={props.disabled}
       title={props.title}
-      className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
+      className={`${props.className ?? ''} inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
         props.small === true ? 'h-7 rounded-md px-2.5 text-xs' : 'h-9 px-3.5 text-sm'
       } ${kind}`}
     >
