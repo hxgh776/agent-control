@@ -130,4 +130,34 @@ describe('skills API (A-SK)', () => {
     const down = await api('GET', '/api/skills/search?q=find');
     expect(down.status).toBe(502);
   });
+
+  it('集合安装：非法 repo → 400；stub 归档 → 一次收编全部技能并投影', async () => {
+    const bad = await api('POST', '/api/skills/install-collection', { repo: 'skills.volces.com/x' });
+    expect(bad.status).toBe(400);
+
+    const zip = await fs.readFile(path.join(fixtureDir, 'multi-skill.zip'));
+    const real = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('https://github.com/test/repo/archive/')) {
+          return new Response(new Uint8Array(zip), { status: 200 });
+        }
+        return real(input, init);
+      }) as unknown as typeof fetch,
+    );
+    const res = await api('POST', '/api/skills/install-collection', {
+      repo: 'test/repo',
+      enableFor: ['claude-code'],
+    });
+    expect(res.status).toBe(200);
+    const report = res.data as { installed: Array<Record<string, unknown>>; failed: unknown[] };
+    expect(report.installed.map((s) => s.directory).sort()).toEqual(['alpha', 'beta']);
+    expect(report.failed).toEqual([]);
+    // enableFor 生效：两个技能已投影到 claude-code 的 skills 目录
+    expect(await fs.readdir(path.join(sandbox, '.claude', 'skills'))).toEqual(
+      expect.arrayContaining(['alpha', 'beta']),
+    );
+  });
 });

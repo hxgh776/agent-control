@@ -38,6 +38,12 @@ const SKILL_MD = 'SKILL.md';
 const SCAN_DEPTH = 6;
 const BACKUP_KEEP = 20;
 
+/** 集合安装结果：一次归档（仓库/ZIP）收编多个技能 */
+export interface CollectionInstallReport {
+  installed: InstalledSkill[];
+  failed: Array<{ directory: string; reason: string }>;
+}
+
 export class SkillsService {
   private readonly ssotDir: string;
   private readonly targetDirs: Record<SkillAgentType, string>;
@@ -153,6 +159,87 @@ export class SkillsService {
     } finally {
       await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  /** 集合安装报告：installed 与 failed 互斥；单个技能失败（如跨来源目录名冲突）不中断整批 */
+  async installCollectionFromRepo(
+    repo: string,
+    opts: { branch?: string; enableFor?: SkillAgentType[] } = {},
+  ): Promise<CollectionInstallReport> {
+    const { owner, name, branch: explicitBranch } = validateRepoRef(repo, opts.branch ?? 'main');
+    const branch = explicitBranch ?? (await this.resolveBranch(owner, name));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    try {
+      const zip = await downloadZip(githubArchiveUrl(owner, name, branch));
+      const extractDir = path.join(tmp, 'x');
+      await extractZip(zip, extractDir);
+      const rootName = await singleRootDir(extractDir);
+      const root = rootName ? path.join(extractDir, rootName) : extractDir;
+      const scanned = await scanSkillDirs(root);
+      if (scanned.length === 0) {
+        throw new SkillInputError(`仓库 ${owner}/${name}@${branch} 中未找到 SKILL.md 目录`);
+      }
+      return await this.admitAll(
+        scanned.map((s) => ({
+          hint: collectionHint(s, root, name),
+          sourceDir: s.dir,
+          readmeUrl: `https://github.com/${owner}/${name}/tree/${branch}/${repoRel(rootName, s.dir)}`,
+        })),
+        { source: 'github', repo: { owner, name, branch }, enableFor: opts.enableFor ?? [] },
+      );
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  async installCollectionFromLocalZip(
+    zip: Buffer,
+    opts: { enableFor?: SkillAgentType[] } = {},
+  ): Promise<CollectionInstallReport> {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'agentcontrol-skillzip-'));
+    try {
+      await extractZip(zip, tmp);
+      const rootName = await singleRootDir(tmp);
+      const root = rootName ? path.join(tmp, rootName) : tmp;
+      const scanned = await scanSkillDirs(root);
+      if (scanned.length === 0) throw new SkillInputError('ZIP 中未找到包含 SKILL.md 的目录');
+      return await this.admitAll(
+        scanned.map((s) => ({ hint: collectionHint(s, root, rootName ?? 'skill'), sourceDir: s.dir })),
+        { source: 'local', enableFor: opts.enableFor ?? [] },
+      );
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /** 集合收编循环：同名目录去重（首个胜出，scan 按路径排序保证确定性）；单个失败收集进 failed 继续装 */
+  private async admitAll(
+    entries: Array<{ hint: string; sourceDir: string; readmeUrl?: string }>,
+    common: { source: SkillSource; repo?: { owner: string; name: string; branch: string }; enableFor: SkillAgentType[] },
+  ): Promise<CollectionInstallReport> {
+    const installed: InstalledSkill[] = [];
+    const failed: Array<{ directory: string; reason: string }> = [];
+    const seen = new Set<string>();
+    for (const e of entries) {
+      const dirName = sanitizeInstallName(e.hint);
+      if (seen.has(dirName)) continue;
+      seen.add(dirName);
+      try {
+        installed.push(
+          await this.admit({
+            source: common.source,
+            directoryHint: e.hint,
+            sourceDir: e.sourceDir,
+            repo: common.repo,
+            readmeUrl: e.readmeUrl,
+            enableFor: common.enableFor,
+          }),
+        );
+      } catch (err) {
+        failed.push({ directory: dirName, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { installed, failed };
   }
 
   /** 分支回退：main → master（skill.rs:3545-3577） */
@@ -651,4 +738,9 @@ function repoRel(rootName: string | null, sourceDir: string): string {
   const norm = sourceDir.split('\\').join('/');
   const idx = norm.indexOf(`/${rootName}/`);
   return idx >= 0 ? norm.slice(idx + rootName.length + 2) : '';
+}
+
+/** 集合安装的目录命名：子目录用目录名；根目录自身的 SKILL.md 用 metadata name，兜底仓库名/归档根名 */
+function collectionHint(s: ScannedSkillDir, root: string, fallback: string): string {
+  return path.resolve(s.dir) === path.resolve(root) ? (s.metadata?.name ?? fallback) : path.basename(s.dir);
 }

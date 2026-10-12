@@ -218,6 +218,12 @@ export interface SkillUpdateReport {
   checkedAt: string;
 }
 
+/** 集合安装（整仓 / ZIP 多技能）结果 */
+export interface SkillCollectionReport {
+  installed: SkillWithStatus[];
+  failed: Array<{ directory: string; reason: string }>;
+}
+
 // —— 供应商切换（S1） ——
 
 export type ProviderApp = 'claude-code' | 'codex' | 'gemini-cli';

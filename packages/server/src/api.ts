@@ -724,8 +724,14 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     branch: z.string().optional(),
     enableFor: z.array(z.string()).optional(),
   });
+  const skillCollectionSchema = z.object({
+    repo: z.string().min(3),
+    branch: z.string().optional(),
+    enableFor: z.array(z.string()).optional(),
+  });
   const skillZipSchema = z.object({
     skill: z.string().optional(),
+    collection: z.boolean().optional(),
     enableFor: z.array(z.string()).optional(),
     contentBase64: z.string().min(8),
   });
@@ -762,12 +768,33 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     }
   });
 
+  // 集合安装：一次下载仓库归档，收编全部含 SKILL.md 的目录；单技能冲突跳过不中断
+  router.post('/api/skills/install-collection', async (ctx) => {
+    const parsed = skillCollectionSchema.safeParse(await ctx.body());
+    if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
+    try {
+      const report = await daemon.skills.installCollectionFromRepo(parsed.data.repo, {
+        branch: parsed.data.branch,
+        enableFor: asSkillAgents(parsed.data.enableFor),
+      });
+      sendJson(ctx.res, 200, report);
+    } catch (err) {
+      sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'SKILL_INSTALL_FAILED');
+    }
+  });
+
   router.post('/api/skills/install-zip', async (ctx) => {
     const parsed = skillZipSchema.safeParse(await ctx.body());
     if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
     try {
       const zip = Buffer.from(parsed.data.contentBase64, 'base64');
       if (zip.length === 0) return sendError(ctx.res, 400, 'ZIP 内容为空');
+      if (parsed.data.collection === true) {
+        const report = await daemon.skills.installCollectionFromLocalZip(zip, {
+          enableFor: asSkillAgents(parsed.data.enableFor),
+        });
+        return sendJson(ctx.res, 200, { report });
+      }
       const row = await daemon.skills.installFromLocalZip(zip, {
         skill: parsed.data.skill,
         enableFor: asSkillAgents(parsed.data.enableFor),

@@ -149,6 +149,52 @@ describe('U-SK-03 安装/投影/卸载（本地 ZIP 全链路）', () => {
     await expect(service.installFromRepo('other/repo', { skill: 'beta' })).rejects.toThrow(/已被/);
   });
 
+  it('集合安装 ZIP：multi-skill.zip 一次收编全部；重装刷新复用', async () => {
+    const report = await service.installCollectionFromLocalZip(await readFixture('multi-skill.zip'));
+    expect(report.failed).toEqual([]);
+    expect(report.installed.map((s) => s.directory).sort()).toEqual(['alpha', 'beta']);
+
+    const again = await service.installCollectionFromLocalZip(await readFixture('multi-skill.zip'));
+    expect(again.failed).toEqual([]);
+    expect(again.installed).toHaveLength(2); // 同来源 → 刷新复用同一批 SSOT 行
+  });
+
+  it('集合安装整仓：一次归档收编全部技能；同仓重装幂等刷新', async () => {
+    stubGithub(
+      'https://github.com/obra/superpowers/archive/refs/heads/main.zip',
+      makeZip([
+        { name: 'superpowers-main/skills/alpha/SKILL.md', content: '---\nname: alpha\n---\nA' },
+        { name: 'superpowers-main/skills/beta/SKILL.md', content: '---\nname: beta\n---\nB' },
+        { name: 'superpowers-main/README.md', content: 'readme' },
+      ]),
+    );
+    const report = await service.installCollectionFromRepo('obra/superpowers');
+    expect(report.failed).toEqual([]);
+    expect(report.installed.map((s) => s.directory).sort()).toEqual(['alpha', 'beta']);
+    expect(report.installed.every((s) => s.repoOwner === 'obra' && s.repoName === 'superpowers')).toBe(true);
+
+    const again = await service.installCollectionFromRepo('obra/superpowers');
+    expect(again.failed).toEqual([]);
+    expect(again.installed).toHaveLength(2); // 同来源 → 刷新复用同一批 SSOT 行
+  });
+
+  it('集合安装整仓：跨来源目录冲突的技能跳过不中断，其余照常收编', async () => {
+    // 本地先占用 alpha 目录
+    const local = await service.installFromLocalZip(await readFixture('multi-skill.zip'), { skill: 'alpha' });
+    stubGithub(
+      'https://github.com/obra/superpowers/archive/refs/heads/main.zip',
+      makeZip([
+        { name: 'superpowers-main/skills/alpha/SKILL.md', content: '---\nname: alpha\n---\nA' },
+        { name: 'superpowers-main/skills/beta/SKILL.md', content: '---\nname: beta\n---\nB' },
+      ]),
+    );
+    const report = await service.installCollectionFromRepo('obra/superpowers');
+    expect(report.installed.map((s) => s.directory)).toEqual(['beta']);
+    expect(report.failed).toEqual([{ directory: 'alpha', reason: expect.stringMatching(/已被/) }]);
+    // 冲突未影响既有数据：本地 alpha 原样保留
+    expect((await service.list()).find((s) => s.id === local.id)?.directory).toBe('alpha');
+  });
+
   it('zip-slip 与 symlink 条目拒收', async () => {
     // yauzl 对 `..` 条目先行拒绝（invalid relative path），我们的越界防线是第二层兜底
     await expect(service.installFromLocalZip(await readFixture('evil-slip.zip'))).rejects.toThrow(

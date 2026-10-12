@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import type { SkillSearchResult, SkillUpdateReport, SkillWithStatus } from '../api';
-import { Badge, Btn, Card, ConfirmDialog, ErrorBanner, OkBanner, Spinner } from '../ui';
+import type { SkillCollectionReport, SkillSearchResult, SkillUpdateReport, SkillWithStatus } from '../api';
+import { Badge, Btn, Card, ConfirmDialog, Spinner } from '../ui';
+import { useToast } from '../ui';
 
 const SKILL_AGENTS = [
   { type: 'claude-code', label: 'Claude Code' },
@@ -13,8 +14,7 @@ const SKILL_AGENTS = [
 
 export function SkillsPage() {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToast();
   const [q, setQ] = useState('');
   const [searchResult, setSearchResult] = useState<SkillSearchResult | null>(null);
   const [searching, setSearching] = useState(false);
@@ -32,13 +32,11 @@ export function SkillsPage() {
     void qc.invalidateQueries({ queryKey: ['skills'] });
   };
   const fail = (e: Error): void => {
-    setError(String(e.message));
-    setOk(null);
+    toast.err(String(e.message));
   };
 
   const doSearch = async (): Promise<void> => {
     setSearching(true);
-    setError(null);
     try {
       const res = await api.get<SkillSearchResult>(
         `/api/skills/search?q=${encodeURIComponent(q.trim())}&limit=20&offset=0`,
@@ -59,8 +57,7 @@ export function SkillsPage() {
         enableFor: enableOnInstall ? SKILL_AGENTS.map((a) => a.type) : [],
       }),
     onSuccess: (res) => {
-      setOk(`已安装 ${res.skill.name}（${enableOnInstall ? '并启用到全部支持 agent' : '未启用'}）`);
-      setError(null);
+      toast.ok(`已安装 ${res.skill.name}（${enableOnInstall ? '并启用到全部支持 agent' : '未启用'}）`);
       invalidate();
     },
     onError: fail,
@@ -68,16 +65,43 @@ export function SkillsPage() {
 
   const installZip = useMutation({
     mutationFn: (contentBase64: string) =>
-      api.post<{ skill: SkillWithStatus }>('/api/skills/install-zip', {
+      api.post<{ skill?: SkillWithStatus; report?: SkillCollectionReport }>('/api/skills/install-zip', {
         contentBase64,
+        collection: true,
         enableFor: enableOnInstall ? SKILL_AGENTS.map((a) => a.type) : [],
       }),
     onSuccess: (res) => {
-      setOk(`已从 ZIP 安装 ${res.skill.name}`);
-      setError(null);
+      if (res.report !== undefined) {
+        const n = res.report.installed.length;
+        const f = res.report.failed.length;
+        toast.ok(`已从 ZIP 安装 ${n} 个技能${f > 0 ? `，跳过 ${f} 个（${res.report.failed.map((x) => x.directory).join('、')}）` : ''}`);
+      } else if (res.skill !== undefined) {
+        toast.ok(`已从 ZIP 安装 ${res.skill.name}`);
+      }
       invalidate();
     },
     onError: fail,
+  });
+
+  // 整仓集合安装：一次下载仓库归档，收编全部 SKILL.md 目录
+  const [pendingRepo, setPendingRepo] = useState<string | null>(null);
+  const installCollection = useMutation({
+    mutationFn: (repo: string) =>
+      api.post<SkillCollectionReport>('/api/skills/install-collection', {
+        repo,
+        enableFor: enableOnInstall ? SKILL_AGENTS.map((a) => a.type) : [],
+      }),
+    onSuccess: (res, repo) => {
+      const n = res.installed.length;
+      toast.ok(
+        n === 0
+          ? `「${repo}」没有可安装的技能（${res.failed.map((x) => x.reason).join('；')}）`
+          : `已安装 ${repo} 的 ${n} 个技能${res.failed.length > 0 ? `，跳过 ${res.failed.length} 个（${res.failed.map((x) => x.directory).join('、')}）` : ''}`,
+      );
+      invalidate();
+    },
+    onError: fail,
+    onSettled: () => setPendingRepo(null),
   });
 
   const toggle = useMutation({
@@ -85,9 +109,7 @@ export function SkillsPage() {
       api.post<{ preserved?: string }>(`/api/skills/${p.id}/toggle`, p),
     onSuccess: (res) => {
       if (res.preserved) {
-        setError(`目标目录已被修改，为保护用户内容未删除：${res.preserved}`);
-      } else {
-        setError(null);
+        toast.err(`目标目录已被修改，为保护用户内容未删除：${res.preserved}`);
       }
       invalidate();
     },
@@ -97,8 +119,7 @@ export function SkillsPage() {
   const update = useMutation({
     mutationFn: (id: string) => api.post<{ skill: SkillWithStatus }>(`/api/skills/${id}/update`),
     onSuccess: (res) => {
-      setOk(`已更新 ${res.skill.name} 并重新分发`);
-      setError(null);
+      toast.ok(`已更新 ${res.skill.name} 并重新分发`);
       invalidate();
     },
     onError: fail,
@@ -108,7 +129,6 @@ export function SkillsPage() {
     mutationFn: () => api.get<SkillUpdateReport>('/api/skills/updates'),
     onSuccess: (res) => {
       setUpdateReport(res);
-      setError(null);
       invalidate();
     },
     onError: fail,
@@ -117,8 +137,7 @@ export function SkillsPage() {
   const uninstall = useMutation({
     mutationFn: (id: string) => api.del<{ preserved: string[]; backup: string | null }>(`/api/skills/${id}`),
     onSuccess: (res) => {
-      setOk(`已卸载（备份：${res.backup ?? '无'}）${res.preserved.length > 0 ? `；保留的用户目录：${res.preserved.join('、')}` : ''}`);
-      setError(null);
+      toast.ok(`已卸载（备份：${res.backup ?? '无'}）${res.preserved.length > 0 ? `；保留的用户目录：${res.preserved.join('、')}` : ''}`);
       setRemoving(null);
       invalidate();
     },
@@ -168,9 +187,6 @@ export function SkillsPage() {
         </label>
       </div>
 
-      {error && <ErrorBanner message={error} />}
-      {ok && <OkBanner message={ok} />}
-
       {updateReport && (
         <Card className="p-4">
           <div data-testid="skills-updates-report" className="mb-2 text-sm font-medium text-slate-700">
@@ -200,9 +216,10 @@ export function SkillsPage() {
         <div className="flex items-center gap-2">
           <input
             data-testid="skill-search-input"
+            data-search-input
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10"
             value={q}
-            placeholder="在 skills.sh 搜索技能，例如：find-skills、commit、review…"
+            placeholder="在 skills.sh 搜索技能，例如：find-skills、commit、review…（按 / 聚焦）"
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void doSearch();
@@ -220,24 +237,44 @@ export function SkillsPage() {
               </div>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {searchResult.skills.map((s) => (
-                  <li key={`${s.repo}#${s.skillId}`} data-testid={`skill-row-${s.skillId}`} className="flex items-center gap-3 py-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-slate-800">{s.name}</div>
-                      <div className="truncate text-xs text-slate-400">
-                        {s.repo} · {s.branch} · {s.installs} 次安装
+                {(() => {
+                  // 集合仓库（如 superpowers）在结果里逐技能铺开；在每个仓库首行提供整仓安装
+                  const firstRowOfRepo = new Map<string, number>();
+                  searchResult.skills.forEach((s, i) => {
+                    if (!firstRowOfRepo.has(s.repo)) firstRowOfRepo.set(s.repo, i);
+                  });
+                  return searchResult.skills.map((s, i) => (
+                    <li key={`${s.repo}#${s.skillId}`} data-testid={`skill-row-${s.skillId}`} className="flex items-center gap-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-800">{s.name}</div>
+                        <div className="truncate text-xs text-slate-400">
+                          {s.repo} · {s.branch} · {s.installs} 次安装
+                        </div>
                       </div>
-                    </div>
-                    <Btn
-                      kind="primary"
-                      testId={`skill-install-${s.skillId}`}
-                      disabled={install.isPending}
-                      onClick={() => install.mutate({ repo: s.repo, skill: s.skillId })}
-                    >
-                      安装
-                    </Btn>
-                  </li>
-                ))}
+                      {firstRowOfRepo.get(s.repo) === i && (
+                        <Btn
+                          testId={`skill-install-collection-${s.repo}`}
+                          disabled={installCollection.isPending}
+                          title={`一次下载 ${s.repo} 归档，安装其中全部技能`}
+                          onClick={() => {
+                            setPendingRepo(s.repo);
+                            installCollection.mutate(s.repo);
+                          }}
+                        >
+                          {pendingRepo === s.repo ? <Spinner className="h-4 w-4" /> : '安装整仓'}
+                        </Btn>
+                      )}
+                      <Btn
+                        kind="primary"
+                        testId={`skill-install-${s.skillId}`}
+                        disabled={install.isPending}
+                        onClick={() => install.mutate({ repo: s.repo, skill: s.skillId })}
+                      >
+                        安装
+                      </Btn>
+                    </li>
+                  ));
+                })()}
               </ul>
             )}
           </div>
