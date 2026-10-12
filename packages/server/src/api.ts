@@ -657,7 +657,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
     const parsed = providerUpsertSchema.safeParse(await ctx.body());
     if (!parsed.success) return sendError(ctx.res, 400, formatZodIssues(parsed.error));
     try {
-      sendJson(ctx.res, 200, { profile: daemon.providers.upsertProfile(parsed.data) });
+      sendJson(ctx.res, 200, { profile: await daemon.providers.upsertProfile(parsed.data) });
     } catch (err) {
       sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_SAVE_FAILED');
     }
@@ -681,7 +681,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
                 ]),
               ),
             };
-      const profile = daemon.providers.upsertProfile({
+      const profile = await daemon.providers.upsertProfile({
         app,
         name: preset.name,
         category: preset.category,
@@ -697,7 +697,7 @@ export function registerApiRoutes(router: Router, daemon: Daemon): void {
 
   router.delete('/api/providers/:id', async (ctx) => {
     try {
-      daemon.providers.deleteProfile(ctx.params['id']!);
+      await daemon.providers.deleteProfile(ctx.params['id']!);
       sendJson(ctx.res, 200, { ok: true });
     } catch (err) {
       sendError(ctx.res, 400, err instanceof Error ? err.message : String(err), 'PROVIDER_DELETE_FAILED');

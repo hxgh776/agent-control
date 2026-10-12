@@ -59,7 +59,7 @@ export class ProvidersService {
     return row;
   }
 
-  upsertProfile(input: {
+  async upsertProfile(input: {
     id?: string;
     app: ProviderApp;
     name: string;
@@ -67,7 +67,7 @@ export class ProvidersService {
     websiteUrl?: string;
     fromPreset?: string;
     config: ProviderPayload;
-  }): ProviderProfile {
+  }): Promise<ProviderProfile> {
     const config = this.opts.getConfig();
     const now = new Date().toISOString();
     let row: ProviderProfile | undefined;
@@ -101,18 +101,18 @@ export class ProvidersService {
       };
       config.providers.push(row);
     }
-    void this.opts.saveConfig();
+    await this.opts.saveConfig();
     return row;
   }
 
-  deleteProfile(id: string): void {
+  async deleteProfile(id: string): Promise<void> {
     const config = this.opts.getConfig();
     const row = this.profile(id);
     config.providers = config.providers.filter((p) => p.id !== id);
     for (const app of PROVIDER_APPS) {
       if (config.providerCurrent[app] === row.id) delete config.providerCurrent[app];
     }
-    void this.opts.saveConfig();
+    await this.opts.saveConfig();
   }
 
   /** 一键切换：把目标供应商投影写入对应 agent 的 live 配置 */

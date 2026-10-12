@@ -327,7 +327,7 @@ describe('U-PR-05 gemini 投影', () => {
 
 describe('U-PR-06 切换全链路', () => {
   it('Claude：settings.json 投影落盘 + 意图清账 + 首写备份', async () => {
-    const profile = service.upsertProfile({
+    const profile = await service.upsertProfile({
       app: 'claude-code',
       name: 'Kimi',
       category: 'cn_official',
@@ -358,12 +358,12 @@ model = "deepseek-flash"
 name = "deepseek"
 base_url = "https://api.deepseek.com"
 wire_api = "responses"`;
-    const third = service.upsertProfile({
+    const third = await service.upsertProfile({
       app: 'codex',
       name: 'DeepSeek',
       config: { auth: { OPENAI_API_KEY: 'sk-third' }, configToml: tpl },
     });
-    const official = service.upsertProfile({
+    const official = await service.upsertProfile({
       app: 'codex',
       name: 'OpenAI Official',
       category: 'official',
@@ -395,7 +395,7 @@ wire_api = "responses"`;
   });
 
   it('Gemini：.env + settings.json 双写', async () => {
-    const profile = service.upsertProfile({
+    const profile = await service.upsertProfile({
       app: 'gemini-cli',
       name: 'PackyCode',
       config: { env: { GOOGLE_GEMINI_BASE_URL: 'https://www.packyapi.ai', GEMINI_API_KEY: 'pk-' } },
