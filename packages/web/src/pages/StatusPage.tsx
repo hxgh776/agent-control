@@ -1,9 +1,23 @@
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, agentInstallTier } from '../api';
 import type { AgentInfo, ImportGroup, RuntimeTool, StatusInfo } from '../api';
 import { Badge, Btn, Card, rowCls, theadCls, useToast } from '../ui';
 import type { TabKey } from '../App';
+
+/** 探测结果徽章：强证据（命令/程序目录）→「已装」；仅配置/数据残留 →「仅数据」；一无所获 →「未发现」 */
+function DetectBadge({ agent }: { agent: AgentInfo }) {
+  const tier = agentInstallTier(agent);
+  if (tier === 'installed') return <Badge tone="green">已装</Badge>;
+  if (tier === 'data-only') {
+    return (
+      <span title="未发现程序安装，仅检测到配置或数据残留">
+        <Badge tone="amber">仅数据</Badge>
+      </span>
+    );
+  }
+  return <Badge tone="gray">未发现</Badge>;
+}
 
 export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void }) {
   const qc = useQueryClient();
@@ -30,6 +44,19 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
       void qc.invalidateQueries();
     },
     onError: (e) => toast.err(String((e as Error).message)),
+  });
+
+  const rerunDetect = useMutation({
+    mutationFn: () => agents.refetch(),
+    onSuccess: (res) => {
+      const list = res.data?.agents ?? [];
+      const installed = list.filter((a) => agentInstallTier(a) === 'installed').length;
+      const dataOnly = list.filter((a) => agentInstallTier(a) === 'data-only').length;
+      toast.ok(
+        `探测完成：${installed} 个已安装，${dataOnly} 个仅检测到配置/数据，${list.length - installed - dataOnly} 个未发现`,
+      );
+    },
+    onError: (e) => toast.err(`探测失败：${String((e as Error).message)}`),
   });
 
   const pending = (imports.data?.groups ?? []).filter((g) => !g.alreadyImported);
@@ -75,37 +102,48 @@ export function StatusPage({ onNavigate }: { onNavigate?: (tab: TabKey) => void 
 
       <Card
         title="本机 Coding Agent"
-        subtitle={`已安装 ${detectedCount} 个；点 agent 卡片可到「Agent 分发」页配置`}
+        subtitle={`检测到 ${detectedCount} 个（含残留数据，悬停徽章看详情）；点 agent 卡片可到「Agent 分发」页配置`}
         actions={
-          <Btn small onClick={() => void agents.refetch()}>
-            重新探测
+          <Btn
+            small
+            disabled={agents.isFetching}
+            onClick={() => void rerunDetect.mutate()}
+            testId="redetect"
+          >
+            {agents.isFetching ? '探测中…' : '重新探测'}
           </Btn>
         }
       >
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {(agents.data?.agents ?? []).map((a) => (
-            <button
-              key={a.agentType}
-              data-testid={`agent-card-${a.agentType}`}
-              onClick={() => onNavigate?.('sync')}
-              className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
-            >
-              <div className="mb-1 flex items-center justify-between gap-1">
-                <span className="truncate text-sm font-semibold text-slate-800" title={a.displayName}>
-                  {a.displayName}
-                </span>
-                {a.detected ? <Badge tone="green">已装</Badge> : <Badge tone="gray">未发现</Badge>}
-              </div>
-              <div className="truncate font-mono text-xs text-slate-400" title={a.configPaths[0]}>
-                {a.configPaths[0]}
-              </div>
-              <div className="mt-2 text-xs text-slate-500">
-                分发 <span className="font-semibold tabular-nums text-slate-700">{a.boundServerIds.length}</span>{' '}
-                个 MCP（含分组）
-              </div>
-            </button>
-          ))}
-        </div>
+        {agents.isFetching && !agents.data ? (
+          <p data-testid="detect-progress" className="text-sm text-slate-400">
+            正在扫描本机 agent 配置与安装位置…
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {(agents.data?.agents ?? []).map((a) => (
+              <button
+                key={a.agentType}
+                data-testid={`agent-card-${a.agentType}`}
+                onClick={() => onNavigate?.('sync')}
+                className="group flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover"
+              >
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <span className="truncate text-sm font-semibold text-slate-800" title={a.displayName}>
+                    {a.displayName}
+                  </span>
+                  <DetectBadge agent={a} />
+                </div>
+                <div className="truncate font-mono text-xs text-slate-400" title={a.configPaths[0]}>
+                  {a.configPaths[0]}
+                </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  分发 <span className="font-semibold tabular-nums text-slate-700">{a.boundServerIds.length}</span>{' '}
+                  个 MCP（含分组）
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card

@@ -74,10 +74,17 @@ export interface RuntimeTool {
   version?: string;
 }
 
+export interface InstallEvidence {
+  kind: 'binary' | 'program' | 'data';
+  path: string;
+}
+
 export interface AgentInfo {
   agentType: string;
   displayName: string;
   detected: boolean;
+  configExists: boolean;
+  installEvidence: InstallEvidence[];
   configPaths: string[];
   transports: string[];
   /** 有效绑定（直连 ∪ 分组包含） */
@@ -85,6 +92,12 @@ export interface AgentInfo {
   directServerIds: string[];
   groupIds: string[];
   syncState: { keyStates: { key: string; hash: string }[]; updatedAt: string } | null;
+}
+
+/** 安装判定分级：installed = 命令/程序目录命中（强证据）；data-only = 仅配置或用户数据残留；none = 一无所获 */
+export function agentInstallTier(a: Pick<AgentInfo, 'detected' | 'installEvidence'>): 'installed' | 'data-only' | 'none' {
+  if (a.installEvidence.some((e) => e.kind === 'binary' || e.kind === 'program')) return 'installed';
+  return a.detected ? 'data-only' : 'none';
 }
 
 export interface GroupInfo {

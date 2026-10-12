@@ -1,11 +1,14 @@
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { AGENT_LIST, AGENTS, makeAgents } from './agents.js';
+import type { InstallProbe } from './agents.js';
 import type { AgentAdapter, RawServerEntry } from './adapters/types.js';
 import { GATEWAY_KEY, LEGACY_GATEWAY_KEY } from './types.js';
 import type {
   AgentBinding,
   AgentDetection,
   AgentType,
+  InstallEvidence,
   ManagerConfig,
   ServerDef,
   ServerGroup,
@@ -218,30 +221,64 @@ function cleanUndefined<T extends object>(input: T): Partial<T> {
 // —— Agent 探测（C1） ——
 
 export async function detectAgents(
-  agents: Record<AgentType, { displayName: string; adapter: AgentAdapter }> = AGENTS,
+  agents: Record<AgentType, { displayName: string; adapter: AgentAdapter; installProbe?: InstallProbe }> = AGENTS,
+  opts: { probeInstall?: boolean } = {},
 ): Promise<AgentDetection[]> {
+  const probe = opts.probeInstall !== false;
   const out: AgentDetection[] = [];
   for (const def of AGENT_LIST) {
     const src = agents[def.type];
     if (!src) continue;
     const paths = src.adapter.candidatePaths();
-    let detected = false;
     const existing: string[] = [];
     for (const p of paths) {
-      if (await fileExists(p)) {
-        detected = true;
-        existing.push(p);
-      }
+      if (await fileExists(p)) existing.push(p);
     }
+    const configExists = existing.length > 0;
+    const installEvidence = probe ? await probeInstall(src.installProbe) : [];
     out.push({
       agentType: def.type,
       displayName: src.displayName,
-      detected,
+      detected: configExists || installEvidence.length > 0,
+      configExists,
+      installEvidence,
       configPaths: existing.length > 0 ? existing : paths,
       transports: [...src.adapter.transports],
     });
   }
   return out;
+}
+
+/** 安装证据探测：命令查 PATH（where/which），目录直接存在性检查，全部并行。 */
+async function probeInstall(p: InstallProbe | undefined): Promise<InstallEvidence[]> {
+  if (!p) return [];
+  const [binaries, programs, datas] = await Promise.all([
+    Promise.all(p.commands.map(async (cmd): Promise<InstallEvidence | null> => {
+      const hit = await commandOnPath(cmd);
+      return hit === null ? null : { kind: 'binary', path: hit };
+    })),
+    Promise.all(p.program.map(async (dir): Promise<InstallEvidence | null> =>
+      (await fileExists(dir)) ? { kind: 'program', path: dir } : null,
+    )),
+    Promise.all(p.data.map(async (dir): Promise<InstallEvidence | null> =>
+      (await fileExists(dir)) ? { kind: 'data', path: dir } : null,
+    )),
+  ]);
+  return [...binaries, ...programs, ...datas].filter((e): e is InstallEvidence => e !== null);
+}
+
+function commandOnPath(command: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const lookup = process.platform === 'win32' ? 'where' : 'which';
+    execFile(lookup, [command], { timeout: 3000, windowsHide: true }, (err, stdout) => {
+      if (err) {
+        resolve(null);
+        return;
+      }
+      const firstLine = String(stdout).split(/\r?\n/)[0]?.trim();
+      resolve(firstLine || null);
+    });
+  });
 }
 
 async function fileExists(p: string): Promise<boolean> {

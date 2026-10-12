@@ -55,17 +55,20 @@ async function writeAgentFile(relSegments: string[], content: string): Promise<v
 }
 
 describe('detect + import (U-IM / C1 C5)', () => {
-  it('探测：只认存在配置文件的 agent', async () => {
+  it('探测：只认存在配置文件的 agent（安装探测关闭时）', async () => {
     await fs.mkdir(path.join(sandbox, '.cursor'), { recursive: true });
     await fs.writeFile(
       path.join(sandbox, '.cursor', 'mcp.json'),
       JSON.stringify({ mcpServers: { ctx: { command: 'node', args: ['ctx.js'] } } }),
       'utf8',
     );
-    const detections = await detectAgents(agents);
+    const detections = await detectAgents(agents, { probeInstall: false });
     const byType = new Map(detections.map((d) => [d.agentType, d]));
     expect(byType.get('cursor')!.detected).toBe(true);
+    expect(byType.get('cursor')!.configExists).toBe(true);
     expect(byType.get('claude-code')!.detected).toBe(false);
+    expect(byType.get('claude-code')!.configExists).toBe(false);
+    expect(byType.get('claude-code')!.installEvidence).toEqual([]);
   });
 
   it('导入：跨 agent 指纹去重，applyImport 跳过注册表已有项', async () => {

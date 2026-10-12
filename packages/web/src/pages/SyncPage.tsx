@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, agentInstallTier } from '../api';
 import type { AgentInfo, GroupInfo, ServerDefDTO, SyncReport } from '../api';
 import { Badge, Btn, Card, Chip, ConfirmDialog, Field, Modal, AddMenu, inputCls, useToast } from '../ui';
 
@@ -199,7 +199,7 @@ export function SyncPage() {
                     optionTestId={(v) => `group-agent-option-${v}`}
                     options={agentList
                       .filter((a) => !g.agentTypes.includes(a.agentType))
-                      .map((a) => ({ value: a.agentType, label: a.displayName, hint: a.detected ? undefined : '未装' }))}
+                      .map((a) => ({ value: a.agentType, label: a.displayName, hint: a.detected ? undefined : '未发现' }))}
                     onPick={(t) => groupAgent.mutate({ groupId: g.id, agentType: t, on: true })}
                   />
                 </div>
@@ -216,7 +216,15 @@ export function SyncPage() {
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-800">{a.displayName}</span>
-                  {a.detected ? <Badge tone="green">已装</Badge> : <Badge tone="gray">未发现</Badge>}
+                  {agentInstallTier(a) === 'installed' ? (
+                    <Badge tone="green">已装</Badge>
+                  ) : agentInstallTier(a) === 'data-only' ? (
+                    <span title="未发现程序安装，仅检测到配置或数据残留">
+                      <Badge tone="amber">仅数据</Badge>
+                    </span>
+                  ) : (
+                    <Badge tone="gray">未发现</Badge>
+                  )}
                 </div>
                 <span className="text-xs tabular-nums text-slate-400">共 {a.boundServerIds.length} 个 MCP</span>
               </div>
@@ -387,7 +395,7 @@ function GroupEditModal(props: {
                 onChange={() => toggle(agentTypes, a.agentType, setAgentTypes)}
               />
               <span className="font-medium text-slate-700">{a.displayName}</span>
-              {!a.detected && <span className="text-xs text-slate-300">未安装</span>}
+              {!a.detected && <span className="text-xs text-slate-300">未发现</span>}
             </label>
           ))}
         </div>

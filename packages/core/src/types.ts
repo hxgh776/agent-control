@@ -99,10 +99,21 @@ export interface ManagerConfig {
   settings: Settings;
 }
 
+export interface InstallEvidence {
+  /** binary = PATH 上的命令；program = 程序安装位置；data = 用户数据目录（卸载后可能残留，弱信号） */
+  kind: 'binary' | 'program' | 'data';
+  path: string;
+}
+
 export interface AgentDetection {
   agentType: AgentType;
   displayName: string;
+  /** 配置存在或发现任一安装证据 */
   detected: boolean;
+  /** 配置文件是否实际存在（卸载残留的配置也算） */
+  configExists: boolean;
+  /** 安装证据明细（UI 据此区分「已安装」与「仅检测到数据」） */
+  installEvidence: InstallEvidence[];
   configPaths: string[];
   transports: TransportType[];
 }
