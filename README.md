@@ -13,7 +13,7 @@
 
 **Agent Control**（npm 包 [`@hxgh776/agent-control`](https://www.npmjs.com/package/@hxgh776/agent-control)，命令 `actl`）——面向开发者个人电脑的 **Agent 能力总控台**：MCP Server **配置一次，多个 AI Coding Agent 一键启用**；可选网关模式统一聚合、代理、过滤与观测所有 MCP 流量。**Skill 管理**与**供应商切换**已内置（吸收自 cc-switch 的防御性设计）。
 
-> Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。独立实现，与 cc-switch 无关联。
+> Inspired by [cc-switch](https://github.com/farion1231/cc-switch) —— 从供应商切换，到 Agent 全能力总控。
 
 支持 **8 个 Agent**：Claude Code · Codex CLI · Cursor · Trae · OpenCode · Claude Desktop · Windsurf · Gemini CLI
 
